@@ -1,7 +1,54 @@
-# The Primer
+# Heirloom
 
-A storybook for children ages 4 to 6 that wakes up, reads aloud, and listens back.
-The full build spec lives in `CLAUDE.md`.
+*"The world Grandpa and I built."*
+
+Every story a grandparent tells (a memory, a dream, something made up) becomes a world their grandchild can
+explore and build in. Each thing the child builds goes back to the grandparent, who answers with the next story.
+
+## The loop
+
+1. **Grandpa tells.** Any story, by voice. An AI interviewer asks a few gentle questions ("What did the house smell
+   like? Who was there?") and the story becomes a 3D world the child can zoom into and explore.
+2. **I build.** The child adds something of their own: a bridge, a house, a garden. The learning lives in the
+   building: counting the planks, reading the sign, naming what they made, in Grandpa's language too.
+3. **Grandpa answers.** "Mia built a bridge to your village!" goes back to Grandpa, and his reply is the next story.
+   Tap anything in the world and you hear Grandpa's own voice telling that part.
+
+**Not** a game with levels or streaks, **not** an AI friend, **not** a chat. The world is a conversation between
+generations, and it is measured by time together, not time on screen.
+
+## Why
+
+Children are lonely and hooked on fast rewards, and so many grandparents are lonely too. Heirloom turns a phone call
+into a shared place, and the only reward is the person on the other side answering.
+
+## What exists today
+
+Heirloom grows out of **The Primer**, a working AI storybook for children 4 to 6 (the full build spec is `CLAUDE.md`).
+It is built, tested (357 unit tests, end-to-end runs in headless Chrome) and committed milestone by milestone:
+
+- **A living book**: it glows, opens, turns its pages and reads aloud in one narrator voice, with captions that light
+  up word by word (`components/`).
+- **Learning by doing**: reading a word aloud with gentle sound-it-out hints, tracing a letter with the magic pencil,
+  counting, and a real physics moment. Every page works by voice or by tap and never traps a child.
+- **Skills and adaptation**: every answer updates a skill score, and tomorrow's plan adapts (`lib/skills.ts`,
+  `lib/adapt.ts`). Grown-ups see a summary behind a parent check (`/parent`).
+- **Story brain**: Claude retells the episode around each child's name and interests, and every generated line
+  passes a safety check before a child hears it (`lib/story.ts`, `lib/safety.ts`).
+- **Grown-up accounts**: parental consent first, children added by first name, age and interests only, progress
+  saved per child, and a real "delete everything" (`app/api/`, `lib/server/`).
+- **World Builder**: living Three.js worlds built and verified by Gemini 4 Argon (below). This is the first step toward
+  Heirloom's worlds.
+
+## Next: from story to world
+
+- [ ] Grandparent recorder with the AI interviewer (memories, dreams, anything)
+- [ ] Story to world plan: Opus 5.5 turns the story into places, people, objects, colors and tap points; a 3D world
+      model (World Labs) and the World Builder turn the plan into an explorable world
+- [ ] Zoom, orbit and tap-to-dive into details, with Grandpa's own voice at every tap point
+- [ ] Build mode for the child, with learning moments inside the building
+- [ ] The reply loop: the child's build goes to Grandpa, Grandpa's answer becomes the next story
+- [ ] Each story adds a new place to the family's map, so the worlds grow into a family atlas
 
 ## Gemini 4 Argon hackathon (Oct 25, 2026): what was built here
 
@@ -33,7 +80,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000 in Chrome. Tap **Open the book**: that first tap lets the browser speak,
+Open http://localhost:3000 in Chrome (if that port is busy, the dev server prints the one it picked). Tap **Open the book**: that first tap lets the browser speak,
 play sounds, and go full screen.
 
 ## Keys (optional)
@@ -45,6 +92,7 @@ Copy `.env.example` to `.env.local` and fill in what you have. Everything works 
 | `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID` | The soft ElevenLabs narrator | The browser's own voice |
 | `ANTHROPIC_API_KEY` | Stories retold for each child's interests (Leo, Ava, or a real child) | The written story, with the child's name |
 | `SESSION_SECRET` | Signs grown-up sign-in cookies (required in production) | Made for you on first run in development |
+| `GEMINI_API_KEY` | The World Builder scripts (Gemini 4 Argon) | The book uses its own counting scene |
 
 With the ElevenLabs keys set, run `npm run audio` once to pre-make Mia's whole episode into `public/audio/`.
 Those files play instantly and cost nothing after the first run.
