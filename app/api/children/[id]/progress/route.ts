@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { episodes } from "@/content/episodes/lost-star";
 import { accounts } from "@/lib/server/accounts";
+import { readJson } from "@/lib/server/guard";
 import { currentParentId, sameOriginJson } from "@/lib/server/session";
 import { SKILL_IDS, type Attempt, type SkillId } from "@/lib/profile";
 
@@ -9,7 +10,7 @@ const MODES = new Set(["voice", "tap", "trace"]);
 function cleanProgress(body: unknown): { skills: Record<SkillId, number>; episodeId: string; attempts: Attempt[] } | null {
   if (!body || typeof body !== "object") return null;
   const { skills, episodeId, attempts } = body as Record<string, unknown>;
-  if (typeof episodeId !== "string" || !episodes[episodeId]) return null;
+  if (typeof episodeId !== "string" || !Object.hasOwn(episodes, episodeId)) return null;
   if (!skills || typeof skills !== "object" || !Array.isArray(attempts) || attempts.length > 60) return null;
   const s = {} as Record<SkillId, number>;
   for (const id of SKILL_IDS) {
@@ -19,6 +20,7 @@ function cleanProgress(body: unknown): { skills: Record<SkillId, number>; episod
   }
   const list: Attempt[] = [];
   for (const raw of attempts) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
     const a = raw as Record<string, unknown>;
     if (!SKILL_IDS.includes(a.skill as SkillId) || typeof a.correct !== "boolean") return null;
     const hints = Number(a.hintsUsed);
@@ -41,7 +43,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/children/[id]/p
   if (!sameOriginJson(req)) return NextResponse.json({ error: "Bad request." }, { status: 400 });
   const pid = await currentParentId();
   if (!pid) return NextResponse.json({ error: "Please sign in first." }, { status: 401 });
-  const progress = cleanProgress(await req.json().catch(() => null));
+  const progress = cleanProgress(await readJson(req, 32_768));
   if (!progress) return NextResponse.json({ error: "Bad progress." }, { status: 400 });
   const { id } = await ctx.params;
   const child = await accounts().saveProgress(pid, id, progress);

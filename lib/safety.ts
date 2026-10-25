@@ -20,13 +20,17 @@ const CATEGORIES: { label: string; terms: string[] }[] = [
       "attack", "attacks", "attacked", "bomb", "bombs", "war", "wars", "poison", "poisonous", "murder",
       "stab", "choke", "drown", "drowned", "evil", "devil", "demon", "zombie", "zombies", "vampire",
       "witch", "terrified", "terrifying", "horror", "creepy", "eat you", "rape",
+      // more word forms and plain harms; never "shooting" (shooting stars) or "skeleton" (dinosaur bones)
+      "stabbed", "stabbing", "choked", "choking", "drowning", "murdered", "murderer", "bleed", "bleeding",
+      "punch", "punched", "punching", "kidnap", "kidnapped", "kidnapper", "strangle", "torture", "corpse",
+      "suicide", "self harm", "hang yourself", "hit you", "hurt you", "beat you up", "gunshot",
     ],
   },
   {
     label: "romance",
     terms: [
       "kiss", "kisses", "kissed", "kissing", "boyfriend", "girlfriend", "sexy", "sex", "naked", "marry",
-      "married", "marriage", "romance", "romantic", "in love", "sweetheart",
+      "married", "marriage", "romance", "romantic", "in love", "sweetheart", "lovers", "sexual", "nude", "porn",
     ],
   },
   {
@@ -38,7 +42,10 @@ const CATEGORIES: { label: string; terms: string[] }[] = [
   },
   {
     label: "unkind words",
-    terms: ["stupid", "idiot", "dumb", "shut up", "hate", "hell", "damn", "crap", "ass"],
+    terms: [
+      "stupid", "idiot", "dumb", "shut up", "hate", "hates", "hated", "hating", "hell", "damn", "crap", "ass",
+      "shit", "fuck", "bitch", "bastard", "loser", "ugly",
+    ],
   },
   {
     label: "personal information",

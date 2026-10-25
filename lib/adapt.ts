@@ -50,6 +50,9 @@ function planWord(name: string, skills: Record<SkillId, number>, attempts: reado
   if (!last.correct) {
     return { word: "GO", wordReason: `${name} read GO together with the book, so GO comes back in a new scene.` };
   }
+  if (last.mode === "tap") {
+    return { word: "GO", wordReason: `${name} answered GO with a tap, so GO comes back in a new scene to read out loud.` };
+  }
   if (last.hintsUsed > 0) {
     return { word: "GO", wordReason: `${name} read GO after a hint, so GO comes back in a new scene for more practice.` };
   }

@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { episodes } from "@/content/episodes/lost-star";
 import { textHash } from "@/lib/hash";
+import { cacheDir, caller, overLimit, readJson, sameOriginJson, sha256 } from "@/lib/server/guard";
 import { checkLines, maskName } from "@/lib/safety";
 import {
   STORY_SYSTEM_PROMPT,
@@ -32,8 +33,10 @@ export const maxDuration = 120;
 const MODEL = "claude-opus-5-5";
 // Server-side fallback: if the model declines, the API retries on its default substitute.
 const FALLBACK_BETA = "server-side-fallback-2026-07-01";
-const CACHE_DIR = path.join(process.cwd(), ".cache", "story");
-const MAX_BODY_CHARS = 4096;
+const CACHE_DIR = cacheDir("story");
+const MAX_BODY_BYTES = 4096;
+// Each new story is two Opus calls: at most a few per caller per hour, in this demo.
+const NEW_STORIES_PER_HOUR = 6;
 
 type StoryResult = { screens: GeneratedScreens["screens"]; fallback: string[]; model: string };
 
@@ -94,9 +97,22 @@ function cacheKey(episodeId: string, outline: ScreenOutline[], p: StoryProfile):
   return `${episodeId}|${version}|${p.name.toLowerCase()}|${p.age}|${interests}`;
 }
 
-const cacheFile = (key: string) => path.join(CACHE_DIR, `${textHash(key)}.json`);
-// A second hash stored inside the file, so two keys that share a file name never mix up children.
-const keyCheck = (key: string) => textHash(`check|${key}`);
+// A strong hash for the file name; the name inside the key never reaches the disk.
+const cacheFile = (key: string) => path.join(CACHE_DIR, `${sha256(key)}.json`);
+const keyCheck = (key: string) => sha256(`check|${key}`);
+
+/**
+ * Stories are cached with the child's name masked, so no first name is ever written to disk
+ * (deleting an account leaves nothing behind) and the name is filled back in on the way out.
+ */
+const mask = (r: StoryResult, name: string): StoryResult => ({
+  ...r,
+  screens: r.screens.map((s) => ({ ...s, narration: s.narration.map((t) => maskName(t, name, "{name}")) })),
+});
+const unmask = (r: StoryResult, name: string): StoryResult => ({
+  ...r,
+  screens: r.screens.map((s) => ({ ...s, narration: s.narration.map((t) => t.replaceAll("{name}", name)) })),
+});
 
 async function readDisk(key: string): Promise<StoryResult | null> {
   try {
@@ -228,15 +244,9 @@ async function generate(client: Anthropic, profile: StoryProfile, outline: Scree
 // ---------------------------------------------------------------- handler
 
 export async function POST(request: Request): Promise<Response> {
-  const raw = await request.text().catch(() => "");
-  if (raw.length > MAX_BODY_CHARS) return json({ error: "bad-request" }, 400);
-  let body: unknown;
-  try {
-    body = JSON.parse(raw);
-  } catch {
-    return json({ error: "bad-request" }, 400);
-  }
-  const req = parseRequest(body);
+  // Only the book itself may ask: same-origin JSON, a small body, and a speed limit on new stories.
+  if (!sameOriginJson(request)) return json({ error: "bad-request" }, 400);
+  const req = parseRequest(await readJson(request, MAX_BODY_BYTES));
   if (!req) return json({ error: "bad-request" }, 400);
 
   const outline = buildOutline(episodes[req.episodeId]);
@@ -246,27 +256,31 @@ export async function POST(request: Request): Promise<Response> {
   const hit = memory.get(key) ?? (await readDisk(key));
   if (hit) {
     memory.set(key, hit);
-    return json(hit, 200);
+    return json(unmask(hit, req.profile.name), 200);
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return json({ error: "no-story-key" }, 503);
+  if (!inflight.has(key) && overLimit(`story|${caller(request)}`, NEW_STORIES_PER_HOUR, 60 * 60 * 1000)) {
+    return json({ error: "story-busy" }, 429);
+  }
 
   let pending = inflight.get(key);
   if (!pending) {
     const client = new Anthropic({ apiKey, maxRetries: 1, timeout: 90_000 });
     pending = generate(client, req.profile, outline)
       .then(async (result) => {
-        memory.set(key, result);
-        await writeDisk(key, result);
-        return result;
+        const masked = mask(result, req.profile.name);
+        memory.set(key, masked);
+        await writeDisk(key, masked);
+        return masked;
       })
       .finally(() => inflight.delete(key));
     inflight.set(key, pending);
   }
 
   try {
-    return json(await pending, 200);
+    return json(unmask(await pending, req.profile.name), 200);
   } catch (err) {
     // Status and kind only: error details can echo the request, which holds the child's name.
     if (err instanceof Anthropic.APIError) {

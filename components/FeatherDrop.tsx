@@ -99,6 +99,11 @@ export default function FeatherDrop({ config, active, ctx }: InteractionProps<Fe
       abort.current = controller;
       setListening(true);
       playSfx("listen");
+      await new Promise((r) => setTimeout(r, 300)); // let the question and the ding fade first
+      if (cancelled || controller.signal.aborted) {
+        setListening(false);
+        return { status: "silence" };
+      }
       const heard = await listenFor(() => false, {
         timeoutMs: config.guessMs,
         signal: controller.signal,

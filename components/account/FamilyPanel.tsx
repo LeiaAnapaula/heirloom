@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import type { AccountChild, AccountView } from "@/lib/account-types";
 import { deleteAccount, fetchAccount, removeChild, signOut, updateChild } from "@/lib/account-client";
 import { setActiveProfile } from "@/lib/active-profile";
+import { clearSession } from "@/lib/session";
 import { MIA } from "@/lib/profile";
 import ChildForm from "./ChildForm";
 
@@ -26,6 +27,15 @@ export default function FamilyPanel() {
       live = false;
     };
   }, []);
+  useLayoutEffect(
+    () => () => {
+      setAccount(undefined);
+      setEditing(null);
+      setConfirmDelete(false);
+      setError(null);
+    },
+    [],
+  );
 
   if (account === undefined) return null;
 
@@ -92,6 +102,9 @@ export default function FamilyPanel() {
             <button
               onClick={async () => {
                 await signOut();
+                // Signing out also clears this device: the last reading (a first name and the
+                // child's spoken guess, as text) should not stay behind for the next person.
+                clearSession();
                 setActiveProfile(MIA.id);
                 await refresh();
               }}
@@ -111,6 +124,7 @@ export default function FamilyPanel() {
                   onClick={async () => {
                     const r = await deleteAccount();
                     if (!r.ok) return setError(r.error);
+                    clearSession();
                     setActiveProfile(MIA.id);
                     setConfirmDelete(false);
                     await refresh();

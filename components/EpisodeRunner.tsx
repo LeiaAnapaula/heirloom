@@ -18,6 +18,7 @@ import { allLines, resolveLine, withName, type Episode, type Line, type Screen }
 import type { InteractionContext } from "@/lib/interaction";
 import { MIA, type ChildProfile } from "@/lib/profile";
 import { saveProgress } from "@/lib/account-client";
+import { stopListening } from "@/lib/listen";
 import { finishSession, logAttempt, startSession } from "@/lib/session";
 import { playSfx, preloadSfx, sfxForEffect, unlockSfx } from "@/lib/sfx";
 import { play, preload, stop as stopVoice, unlockAudio } from "@/lib/voice";
@@ -42,22 +43,21 @@ function screenLines(episode: Episode, screen: Screen | undefined, name: string)
   return screen ? allLines({ ...episode, screens: [screen] }).map((l) => resolveLine(l, name)) : [];
 }
 
-/**
- * Has this page had a tap or key press yet? Browsers won't speak before one. Read from the
- * browser as an external store so the sleeping-book gate appears without an extra render pass.
- */
-function subscribeToTaps(onChange: () => void) {
-  window.addEventListener("pointerdown", onChange, true);
-  window.addEventListener("keydown", onChange, true);
-  return () => {
-    window.removeEventListener("pointerdown", onChange, true);
-    window.removeEventListener("keydown", onChange, true);
-  };
-}
+/** Has this page had a tap or key press yet? Browsers won't speak before one. */
 function hasBeenTapped(): boolean {
   const ua = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation;
   return ua ? ua.hasBeenActive : true;
 }
+const noSubscribe = () => () => {};
+
+/** A tablet or phone held upright: the spread doesn't fit, so the story waits (see RotateHint). */
+const PORTRAIT = "(orientation: portrait) and (pointer: coarse)";
+function subscribePortrait(onChange: () => void) {
+  const mql = window.matchMedia(PORTRAIT);
+  mql.addEventListener("change", onChange);
+  return () => mql.removeEventListener("change", onChange);
+}
+const isPortrait = () => window.matchMedia(PORTRAIT).matches;
 
 export default function EpisodeRunner({
   episode,
@@ -74,10 +74,14 @@ export default function EpisodeRunner({
   const [wordIndex, setWordIndex] = useState(-1);
   const [mood, setMood] = useState<Mood>("idle");
   const [screenGen, setScreenGen] = useState(0); // which generation the mounted interaction belongs to
+  const [tappedHere, setTappedHere] = useState(false);
 
   // Every screen gets a new generation number. Async work from an old screen
   // checks it and quietly stops, so nothing from page 2 can talk over page 3.
   const gen = useRef(0);
+  const indexRef = useRef(0);
+  const pausedRef = useRef(false);
+  const skillsRef = useRef(profile.skills); // carries today's progress into "Read it again"
   const phaseRef = useRef<Phase>("closed");
   const setPhaseBoth = (p: Phase) => {
     phaseRef.current = p;
@@ -108,6 +112,7 @@ export default function EpisodeRunner({
       stopVoice();
       preload(screenLines(episode, screens[i + 1], profile.name));
       setScreenGen(g);
+      indexRef.current = i;
       setIndex(i);
       setMood("idle");
       setCaption(null);
@@ -120,6 +125,27 @@ export default function EpisodeRunner({
       setPhaseBoth("interact");
     },
     [episode, narrate, profile.name, screens],
+  );
+
+  /** After page i is done: turn to the next page, or close the story and save what was learned. */
+  const advance = useCallback(
+    (i: number) => {
+      if (i + 1 < screens.length) return void runScreen(i + 1, true);
+      gen.current++;
+      setCaption(null);
+      const session = finishSession();
+      if (session) skillsRef.current = session.skills;
+      // A signed-in family keeps progress on any device; a guest's stays on this one only.
+      if (childId && session) {
+        void saveProgress(childId, {
+          skills: session.skills,
+          episodeId: episode.id,
+          attempts: session.attempts.map((a) => ({ skill: a.skill, correct: a.correct, hintsUsed: a.hintsUsed, ms: a.ms, mode: a.mode, note: a.note })),
+        });
+      }
+      setPhaseBoth("end");
+    },
+    [childId, episode.id, runScreen, screens.length],
   );
 
   const succeed = useCallback(async () => {
@@ -136,23 +162,8 @@ export default function EpisodeRunner({
     await narrate(narration);
     await wait(Math.max(900, (effect ? CELEBRATION_MS[effect] : 0) - (Date.now() - started)));
     if (gen.current !== g) return;
-    if (i + 1 < screens.length) {
-      runScreen(i + 1, true);
-    } else {
-      gen.current++;
-      setCaption(null);
-      const session = finishSession();
-      // A signed-in family keeps progress on any device; a guest's stays on this one only.
-      if (childId && session) {
-        void saveProgress(childId, {
-          skills: session.skills,
-          episodeId: episode.id,
-          attempts: session.attempts.map((a) => ({ skill: a.skill, correct: a.correct, hintsUsed: a.hintsUsed, ms: a.ms, mode: a.mode, note: a.note })),
-        });
-      }
-      setPhaseBoth("end");
-    }
-  }, [childId, episode.id, index, narrate, runScreen, screens]);
+    advance(i);
+  }, [advance, index, narrate, screens]);
 
   // What this screen's interaction may do. A new object per screen, so nothing leaks between pages.
   const ctx = useMemo<InteractionContext>(
@@ -170,7 +181,7 @@ export default function EpisodeRunner({
   // The book wakes up: it sits closed, glows, then opens on its own.
   const wake = useCallback(async () => {
     const g = ++gen.current;
-    startSession(profile);
+    startSession({ ...profile, skills: skillsRef.current });
     preload(screenLines(episode, screens[0], profile.name));
     await wait(500);
     if (gen.current !== g) return;
@@ -186,27 +197,37 @@ export default function EpisodeRunner({
 
   // Opened from the title screen, the tap there already woke the narrator.
   // Opened directly (a reload, a shared link), the child taps the sleeping book first.
-  const tapped = useSyncExternalStore(subscribeToTaps, hasBeenTapped, () => true);
+  const tapped = useSyncExternalStore(noSubscribe, hasBeenTapped, () => true) || tappedHere;
+  const portrait = useSyncExternalStore(subscribePortrait, isPortrait, () => false);
 
   useEffect(() => {
     void preloadSfx();
   }, []);
 
+  // Run the story only while it can be seen and heard: after a tap, and never under the
+  // "turn me sideways" cover. Turning the tablet upright pauses (voice and microphone stop);
+  // turning it back replays the page the child was on.
   useEffect(() => {
-    if (!tapped) return;
-    wake();
+    if (!tapped || portrait) return;
+    const p = phaseRef.current;
+    if (p === "closed" || p === "glowing" || p === "opening") wake();
+    else if (pausedRef.current && p === "success") advance(indexRef.current);
+    else if (pausedRef.current && p !== "end") runScreen(indexRef.current, false);
+    pausedRef.current = false;
     return () => {
       // gen is a counter, not a DOM node: bumping it is exactly how we cancel.
       // eslint-disable-next-line react-hooks/exhaustive-deps
       gen.current++;
       stopVoice();
+      stopListening();
+      pausedRef.current = true;
     };
-  }, [tapped, wake]);
+  }, [tapped, portrait, wake, runScreen, advance]);
 
   const restart = () => {
     gen.current++;
     stopVoice();
-    startSession(profile);
+    startSession({ ...profile, skills: skillsRef.current });
     setIndex(0);
     setCaption(null);
     setMood("idle");
@@ -225,7 +246,7 @@ export default function EpisodeRunner({
       <Link
         href="/"
         aria-label="Close the book"
-        className="absolute left-[max(1rem,env(safe-area-inset-left))] top-[max(1rem,env(safe-area-inset-top))] grid h-11 w-11 place-items-center rounded-full text-mist/60 transition-colors hover:text-moon"
+        className="absolute left-[max(0.5rem,env(safe-area-inset-left))] top-[max(0.5rem,env(safe-area-inset-top))] z-20 grid h-11 w-11 place-items-center rounded-full text-mist/60 transition-colors hover:text-moon"
       >
         <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <path d="M6 6l12 12M18 6L6 18" />
@@ -247,12 +268,14 @@ export default function EpisodeRunner({
       <Progress count={screens.length} index={ended ? screens.length : index} visible={opened} />
 
       {asleep && (
-        // The tap itself wakes the book (see subscribeToTaps); unlocking audio has to happen inside it.
+        // Unlocking audio must happen inside the tap itself, so the tap's own handler wakes the book.
         <button
           onClick={() => {
             unlockAudio();
             unlockSfx();
-          }} className="absolute inset-0 z-10 flex items-end justify-center pb-[6dvh]" aria-label="Wake up the book">
+            setTappedHere(true);
+          }}
+          className="absolute inset-0 z-10 flex items-end justify-center pb-[6dvh]" aria-label="Wake up the book">
           <motion.span
             className="text-xl font-semibold text-moon/90"
             animate={{ opacity: [0.5, 1, 0.5] }}

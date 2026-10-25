@@ -27,7 +27,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
  * base64url(payload) + "." + HMAC-SHA256 signature. The browser keeps it in an
  * httpOnly cookie, so page scripts can't read it.
  */
-export type SessionPayload = { pid: string; exp: number }; // parent id, expiry (ms since epoch)
+export type SessionPayload = { pid: string; v: number; exp: number }; // parent id, session version, expiry (ms since epoch)
 
 export function signToken(payload: SessionPayload, secret: string): string {
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
@@ -43,7 +43,7 @@ export function verifyToken(token: string, secret: string, now = Date.now()): Se
   if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
   try {
     const payload = JSON.parse(Buffer.from(body, "base64url").toString()) as SessionPayload;
-    if (typeof payload.pid !== "string" || typeof payload.exp !== "number" || payload.exp < now) return null;
+    if (typeof payload.pid !== "string" || typeof payload.v !== "number" || typeof payload.exp !== "number" || payload.exp < now) return null;
     return payload;
   } catch {
     return null;

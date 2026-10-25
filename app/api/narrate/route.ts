@@ -1,7 +1,10 @@
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { connection } from "next/server";
-import { textHash } from "@/lib/hash";
+import { lostStar } from "@/content/episodes/lost-star";
+import { allLines, resolveLine } from "@/lib/episode";
+import { MIA } from "@/lib/profile";
+import { cacheDir, caller, overLimit, readJson, sameOriginJson, sha256 } from "@/lib/server/guard";
 
 /**
  * POST /api/narrate with { text } answers audio/mpeg in the narrator's voice (ElevenLabs).
@@ -16,7 +19,13 @@ import { textHash } from "@/lib/hash";
  */
 
 const MAX_CHARS = 400;
-const CACHE_DIR = path.join(process.cwd(), ".cache", "narration");
+const CACHE_DIR = cacheDir("narration");
+
+// Only the written episode, as read to the made-up demo child, is saved to disk. Every other
+// line can hold a real child's first name, so it lives in memory only and is gone on restart.
+const PUBLIC_LINES = new Set(allLines(lostStar).map((l) => resolveLine(l, MIA.name)).map((l) => l.say ?? l.text));
+const memoryAudio = new Map<string, Uint8Array>();
+const MEMORY_LIMIT = 300;
 
 // Two requests for the same line at once share one ElevenLabs call.
 const inFlight = new Map<string, Promise<Uint8Array>>();
@@ -35,6 +44,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (!sameOriginJson(request)) return Response.json({ error: "bad-request" }, { status: 400 });
+  // Each new line costs ElevenLabs credits: a speed limit per caller keeps a stranger from spending them.
+  if (overLimit(`narrate|${caller(request)}`, 90, 60 * 1000)) return Response.json({ error: "slow-down" }, { status: 429 });
   const text = await readText(request);
   if (text === null) {
     return Response.json({ error: `text must be 1 to ${MAX_CHARS} characters` }, { status: 400 });
@@ -44,19 +56,23 @@ export async function POST(request: Request) {
   if (!config) return Response.json({ error: "no-voice-key" }, { status: 501 });
   const { key, voiceId } = config;
 
-  const file = path.join(CACHE_DIR, `${voiceId}-${textHash(text)}.mp3`);
-  const cached = await readFile(file).catch(() => null);
+  // A strong hash: nobody can choose a text that lands on a real line's file and plant other audio there.
+  const id = sha256(`${voiceId}|${text}`);
+  const onDisk = PUBLIC_LINES.has(text);
+  const file = path.join(CACHE_DIR, `${id}.mp3`);
+  const cached = onDisk ? await readFile(file).catch(() => null) : (memoryAudio.get(id) ?? null);
   if (cached && cached.byteLength > 0) return audio(cached);
 
-  let pending = inFlight.get(file);
+  let pending = inFlight.get(id);
   if (!pending) {
     pending = synthesize(text, key, voiceId)
       .then(async (mp3) => {
-        await save(file, mp3);
+        if (onDisk) await save(file, mp3);
+        else remember(id, mp3);
         return mp3;
       })
-      .finally(() => inFlight.delete(file));
-    inFlight.set(file, pending);
+      .finally(() => inFlight.delete(id));
+    inFlight.set(id, pending);
   }
 
   try {
@@ -68,9 +84,14 @@ export async function POST(request: Request) {
   }
 }
 
+function remember(id: string, mp3: Uint8Array) {
+  memoryAudio.set(id, mp3);
+  if (memoryAudio.size > MEMORY_LIMIT) memoryAudio.delete(memoryAudio.keys().next().value!);
+}
+
 async function readText(request: Request): Promise<string | null> {
   try {
-    const body: unknown = await request.json();
+    const body: unknown = await readJson(request, 4096);
     const text = body && typeof body === "object" ? (body as { text?: unknown }).text : undefined;
     if (typeof text !== "string" || !text.trim() || text.length > MAX_CHARS) return null;
     return text;
@@ -84,7 +105,7 @@ function audio(bytes: Uint8Array): Response {
     headers: {
       "Content-Type": "audio/mpeg",
       "Content-Length": String(bytes.byteLength),
-      "Cache-Control": "public, max-age=31536000, immutable",
+      "Cache-Control": "private, max-age=31536000, immutable", // lines can hold a child's name: no shared caches
     },
   });
 }

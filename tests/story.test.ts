@@ -154,6 +154,17 @@ describe("validateGenerated", () => {
     expect(errorsOf(gen)).toContain("the child's name never appears");
   });
 
+  it("rejects a reading screen that spells its word out", () => {
+    expect(errorsOf(withScreen("go", ["Read the button, Leo. It says G-O."]))).toContain("go: says the word the child must read");
+    expect(errorsOf(withScreen("home", ["Read the magic word, Leo: H O M E."]))).toContain("home: says the word the child must read");
+  });
+
+  it("rejects a feather question that gives the answer away", () => {
+    expect(errorsOf(withScreen("moon", ["We made it, Leo!", "If you drop a feather on the Moon, will it float down slowly?"]))).toContain(
+      "moon: gives away what the feather does",
+    );
+  });
+
   it("rejects a reading screen that says its word", () => {
     expect(errorsOf(withScreen("go", ["To start the rocket, read go on the button."]))).toContain("go: says the word the child must read");
     expect(errorsOf(withScreen("go", ["Ready, set, GO!"]))).toContain("go: says the word the child must read");

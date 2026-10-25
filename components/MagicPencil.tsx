@@ -16,6 +16,7 @@ const SLOW = 1.6; // hint demos play this much slower
 const FLIGHT_MS = 2400;
 const FLIGHT_POINTS = 80;
 const IDLE_MS = 10000;
+const MORE_MS = 1300; // after a short stroke, how long to wait for the rest of the letter
 const MAX_HINTS = 2;
 const TAP_LENGTH = 14; // box units; shorter strokes are taps or slips, not attempts
 const STROKE_W = 7;
@@ -67,6 +68,7 @@ export default function MagicPencil({ config, active, ctx }: InteractionProps<Tr
   const toSvg = useRef<DOMMatrix | null>(null);
   const stroke = useRef<Pt[]>([]);
   const strokeText = useRef("");
+  const continuing = useRef(false); // true while waiting for the second part of a letter drawn in pieces
   const reduceRef = useRef(false);
 
   // Everything here depends only on the letter, so it is worked out once.
@@ -124,21 +126,24 @@ export default function MagicPencil({ config, active, ctx }: InteractionProps<Tr
       await clock.sleep(400);
     };
 
-    // Resolves with her stroke, "idle" if nothing is drawn for idleMs, or null if the page goes away.
-    const waitForStroke = (idleMs: number | null) =>
+    // Resolves with her stroke, "idle" if no stroke is finished within idleMs, or null if the
+    // page goes away. Taps don't push the timer back (a child tapping the dot over and over still
+    // gets help), and the timer never interrupts a stroke that is being drawn.
+    const waitForStroke = (idleMs: number) =>
       new Promise<Pt[] | "idle" | null>((resolve) => {
         let timer: ReturnType<typeof setTimeout> | undefined;
-        const arm = () => {
-          if (idleMs !== null) timer = clock.timeout(() => finish("idle"), idleMs);
+        const fire = () => {
+          if (drawing.current !== null) timer = clock.timeout(fire, 600);
+          else finish("idle");
         };
         const finish = (result: Pt[] | "idle" | null) => {
           clock.clear(timer);
           waiter.current = null;
           resolve(result);
         };
-        waiter.current = { down: () => clock.clear(timer), tap: arm, done: finish };
+        waiter.current = { down: () => {}, tap: () => {}, done: finish };
         clock.onStop(() => finish(null));
-        arm();
+        timer = clock.timeout(fire, idleMs);
       });
 
     // The rocket swoops along `path`, turning to face where it is going, leaving a soft gold trail.
@@ -194,8 +199,8 @@ export default function MagicPencil({ config, active, ctx }: InteractionProps<Tr
       if (!alive()) return;
 
       const enabledAt = performance.now();
+      const templateLength = pathLength(template);
       let hintsUsed = 0;
-      let idleHintUsed = false;
 
       // One hint: say the help line, watch the pencil again slowly, then hand the pencil back.
       const hint = async () => {
@@ -216,23 +221,35 @@ export default function MagicPencil({ config, active, ctx }: InteractionProps<Tr
         setLine(strokeRef.current, "");
         setPhase("trace");
 
-        const got = await waitForStroke(!idleHintUsed && hintsUsed < MAX_HINTS ? IDLE_MS : null);
+        let got = await waitForStroke(IDLE_MS);
         if (got === null || !alive()) return;
 
-        if (got === "idle") {
-          idleHintUsed = true;
+        if (got === "idle" && hintsUsed < MAX_HINTS) {
+          // Nothing drawn (or only taps): help, as many times as a miss would.
           await hint();
           if (!alive()) return;
           continue;
         }
 
+        // Some children draw an S in two pieces. A short stroke waits a moment for the rest,
+        // and the pieces are scored together as one letter.
+        while (got !== "idle" && pathLength(got) < templateLength * 0.85 && !scoreTrace(got, template).pass) {
+          continuing.current = true;
+          const more = await waitForStroke(MORE_MS);
+          continuing.current = false;
+          if (more === null || !alive()) return;
+          if (more === "idle") break;
+          got = more;
+        }
+
         const ms = Math.round(performance.now() - enabledAt);
-        const { pass } = scoreTrace(got, template);
+        // Still nothing after two hints: the page moves on anyway (the rocket follows the letter).
+        const { pass } = got === "idle" ? { pass: false } : scoreTrace(got, template);
         if (pass || hintsUsed >= MAX_HINTS) {
           // A miss after two hints still moves the story on: the rocket follows the letter instead.
           setPassed(pass);
           setPhase("fly");
-          await fly(resample(pass ? got : template, FLIGHT_POINTS));
+          await fly(resample(pass && got !== "idle" ? got : template, FLIGHT_POINTS));
           if (!alive()) return;
           setPhase("done");
           ctx.log({ skill: config.skill, correct: pass, hintsUsed, ms, mode: "trace" });
@@ -270,8 +287,14 @@ export default function MagicPencil({ config, active, ctx }: InteractionProps<Tr
     drawing.current = e.pointerId;
     waiter.current.down();
     const p = toPoint(e);
-    stroke.current = p ? [p] : [];
-    strokeText.current = p ? fmt(p) : "";
+    if (continuing.current && p) {
+      // The rest of a letter drawn in pieces: keep the first part and carry on from here.
+      stroke.current.push(p);
+      strokeText.current += " " + fmt(p);
+    } else {
+      stroke.current = p ? [p] : [];
+      strokeText.current = p ? fmt(p) : "";
+    }
     setLine(strokeRef.current, strokeText.current);
   };
 

@@ -43,7 +43,17 @@ The microphone only works on a secure page. Two ways:
 1. **Deploy** (cleanest for the demo video): push to GitHub, import into Vercel, add the keys there, open the https link on the iPad.
 2. **Same wifi**: run `npm run dev:ipad`, then open `https://<your-mac-name>.local:3000` on the iPad and accept the certificate warning once.
 
-Then use Safari's Share menu, **Add to Home Screen**, and open it from there for a true full-screen book. Hold the iPad sideways.
+For a true full-screen book, use Safari's Share menu, **Add to Home Screen**, then open the book from the Home Screen and
+**sign in there** (a Home Screen app keeps its own sign-in, separate from Safari). Hold the iPad sideways.
+
+### Deploying to Vercel
+
+- Add `SESSION_SECRET` (any random 32+ characters) in the project's environment variables, or sign-in is turned off.
+- Vercel's disk is read-only except a temporary folder that is wiped when the server restarts. The app writes caches and
+  demo accounts there, so **accounts on a Vercel demo can disappear**. That is fine for recording the video; before real
+  families sign up, move `lib/server/accounts.ts` to a hosted database (Supabase).
+- Creating a new personal story takes two Claude calls (often 20 to 60 seconds). Open each demo child once before
+  recording so the story is already cached.
 
 ## Scripts
 

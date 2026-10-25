@@ -209,7 +209,7 @@ function screenErrors(o: ScreenOutline, narration: string[]): string[] {
     if (o.skill === "idea:gravity" && !hasTerm(all, "gravity")) errors.push(`${o.id}: does not name gravity`);
     return errors;
   }
-  if (kind === "read" && hasTerm(all, arg)) errors.push(`${o.id}: says the word the child must read`);
+  if (kind === "read" && (hasTerm(all, arg) || spellsOut(all, arg))) errors.push(`${o.id}: says the word the child must read`);
   if (kind === "write" && !hasLetter(all, arg)) errors.push(`${o.id}: does not name the letter ${arg}`);
   if (kind === "count") {
     if (!hasTerm(all, "how many")) errors.push(`${o.id}: does not ask how many`);
@@ -220,9 +220,20 @@ function screenErrors(o: ScreenOutline, narration: string[]): string[] {
     if (!hasTerm(all, "feather") && !hasTerm(all, "feathers")) errors.push(`${o.id}: does not mention the feather`);
     if (!hasTerm(all, "moon")) errors.push(`${o.id}: does not mention the Moon`);
     if (!endsWithQuestion(last)) errors.push(`${o.id}: does not end with a question`);
+    if (GRAVITY_ANSWER.some((w) => hasTerm(all, w))) errors.push(`${o.id}: gives away what the feather does`);
   }
   if (kind === "say" && !endsWithQuestion(last)) errors.push(`${o.id}: does not end with a question`);
   return errors;
+}
+
+// The question is the child's to answer: the opening must not say how the feather falls.
+const GRAVITY_ANSWER = ["slow", "slowly", "gently", "float", "floats", "floating", "drift", "drifts", "softly"];
+
+/** "G-O", "G O", "g.o.": the reading word spelled out letter by letter gives the answer away too. */
+function spellsOut(text: string, word: string): boolean {
+  const letters = word.toLowerCase().split("");
+  const re = new RegExp(`(^|[^a-z])${letters.join("[\\s.\\-,]+")}(?=$|[^a-z])`, "i");
+  return re.test(text.toLowerCase());
 }
 
 type Parsed = { screens: Map<string, string[]>; errors: string[] };

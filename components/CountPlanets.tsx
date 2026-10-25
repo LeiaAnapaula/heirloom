@@ -10,6 +10,7 @@ import { canListen, listenFor, parseLastNumber, stopListening } from "@/lib/list
 import type { Attempt } from "@/lib/profile";
 
 const LISTEN_MS = 6000;
+const SETTLE_MS = 300; // let the book's own voice fade before listening
 // With no microphone the buttons carry the page. If no tap comes, the book counts with the child anyway.
 const TAP_ONLY_MS = 8000;
 const MAX_HINTS = 2;
@@ -102,12 +103,19 @@ export default function CountPlanets({ config, active, ctx }: InteractionProps<C
         if (micOff) return waitForTap();
 
         abort = new AbortController();
+        const signal = abort.signal;
         setListening(true);
         playSfx("listen");
         // Match only the right number, and only as the last number said: interim results
         // arrive mid-count ("one, two..."), so judging the first number heard would be unfair.
         // A finished phrase with another number is a wrong answer; the book counts together.
-        void listenFor((h) => parseLastNumber(h) === expected, { timeoutMs: LISTEN_MS, signal: abort.signal }).then((heard) => {
+        // The short wait lets the narrator's question and the ding fade before the microphone opens.
+        const hear = async () => {
+          await new Promise((r) => setTimeout(r, SETTLE_MS));
+          if (settled || cancelled) return { status: "silence" } as const;
+          return listenFor((h) => parseLastNumber(h) === expected, { timeoutMs: LISTEN_MS, signal });
+        };
+        void hear().then((heard) => {
           if (heard.status === "match") return settle({ n: expected, mode: "voice" });
           if (heard.status === "nomatch") return settle({ n: parseLastNumber(heard.heard), mode: "voice" });
           if (heard.status === "silence") return settle({ n: null });

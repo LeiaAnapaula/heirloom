@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import FamilyPanel from "./account/FamilyPanel";
-import { Suspense, use, useEffect, useEffectEvent, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Suspense, use, useEffect, useEffectEvent, useLayoutEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { browser } from "react-dom";
 import { StarSprite } from "./art/sprites";
 import { lostStar } from "@/content/episodes/lost-star";
@@ -51,6 +51,9 @@ function GrownUpCorner() {
   use(browser("The parent check and today's results live in this browser."));
   const [unlocked, setUnlocked] = useState(false);
   const reduceMotion = useReducedMotion();
+  // Leaving the page locks it again: Next keeps visited pages alive, and a child must not
+  // find the grown-up page already open the next time someone taps "For grown-ups".
+  useLayoutEffect(() => () => setUnlocked(false), []);
   const fade = { duration: reduceMotion ? 0 : 0.35 };
 
   return (
@@ -399,8 +402,10 @@ function PrivacyNote() {
   return (
     <footer className="mt-10 px-1 text-sm leading-relaxed text-mist">
       <p>
-        Saved on this device only: first name, age, interests, skill scores, and today&apos;s answers, including the gravity guess as
-        text. These results stay on this device. No voice recordings are ever made or kept.
+        Kept on this device: first name, age, interests, skill scores, and today&apos;s answers, including the gravity guess as
+        text. If you are signed in, the same results are also saved to your grown-up account so they follow your child. No voice
+        recordings are ever made or kept: the browser&apos;s speech service turns spoken answers into text. To write and read the
+        story, only first name, age and interests are shared with our AI partners.
       </p>
       {asking ? (
         <div className="mt-4 flex flex-wrap items-center gap-3">

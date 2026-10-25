@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import { CONSENT_VERSION, cleanEmail, passwordProblem } from "@/lib/account-types";
 import { accounts } from "@/lib/server/accounts";
-import { sameOriginJson, startSession } from "@/lib/server/session";
+import { readJson } from "@/lib/server/guard";
+import { sameOriginJson, sessionsReady, startSession, tooManySignups } from "@/lib/server/session";
 
 /** A parent creates an account and agrees to the consent notice. Children come next. */
 export async function POST(req: Request) {
   if (!sameOriginJson(req)) return NextResponse.json({ error: "Bad request." }, { status: 400 });
-  const body = (await req.json().catch(() => null)) as { email?: unknown; password?: unknown; consent?: unknown } | null;
+  if (tooManySignups(req)) return NextResponse.json({ error: "Too many new accounts from here. Try again later." }, { status: 429 });
+  // Check sign-in can work before creating anything, so a misconfigured server never leaves a half-made account.
+  if (!(await sessionsReady())) return NextResponse.json({ error: "Accounts are not set up on this server yet." }, { status: 503 });
+  const body = (await readJson(req, 4096)) as { email?: unknown; password?: unknown; consent?: unknown } | null;
   const email = cleanEmail(body?.email);
   if (!email) return NextResponse.json({ error: "Please enter a real email address." }, { status: 400 });
   const problem = passwordProblem(body?.password);

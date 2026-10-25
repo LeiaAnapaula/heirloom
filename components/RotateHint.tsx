@@ -4,11 +4,13 @@ import { motion } from "framer-motion";
 
 /**
  * The book is a landscape spread. On a tablet or phone held upright, ask for a turn
- * instead of squeezing the pages. Pure CSS decides when it shows, so it never flashes.
+ * instead of squeezing the pages. CSS decides when it shows, so it never flashes.
  */
 export default function RotateHint() {
   return (
-    <div className="pointer-events-none fixed inset-0 z-50 hidden items-center justify-center bg-ink/95 portrait:max-lg:flex">
+    // Covers and blocks the page on an upright tablet or phone (touch screens only, so a narrow
+    // laptop window never sees it). EpisodeRunner pauses the story under the same media query.
+    <div className="fixed inset-0 z-50 hidden items-center justify-center bg-ink [@media(orientation:portrait)_and_(pointer:coarse)]:flex">
       <div className="flex flex-col items-center gap-6 px-8 text-center">
         <motion.svg
           viewBox="0 0 64 64"

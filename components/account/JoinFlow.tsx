@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { addChild, fetchAccount, signUp } from "@/lib/account-client";
 import { CONSENT_TEXT, CONSENT_VERSION, cleanEmail, passwordProblem } from "@/lib/account-types";
 import { setActiveProfile } from "@/lib/active-profile";
@@ -28,8 +28,27 @@ export default function JoinFlow() {
   const [childName, setChildName] = useState("");
 
   useEffect(() => {
-    fetchAccount().then((a) => setStep(a ? "child" : "parent"));
+    let live = true;
+    fetchAccount().then((a) => live && setStep(a ? "child" : "parent"));
+    return () => {
+      live = false;
+    };
   }, []);
+
+  // Next keeps visited pages alive: wipe the form when this one is left.
+  useLayoutEffect(
+    () => () => {
+      setStep("loading");
+      setEmail("");
+      setPassword("");
+      setShowPassword(false);
+      setAgreed(false);
+      setError(null);
+      setBusy(false);
+      setChildName("");
+    },
+    [],
+  );
 
   const createAccount = async (e: React.FormEvent) => {
     e.preventDefault();

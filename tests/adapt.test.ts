@@ -199,3 +199,16 @@ describe("planNext, the reasons", () => {
     expect(s).toEqual(copy);
   });
 });
+
+describe("tap answers", () => {
+  it("never count as reading with no help", () => {
+    const skills = { ...MIA.skills, "read:GO": 0.9 };
+    const plan = planNext({
+      profile: { id: MIA.id, name: "Mia", age: 5, interests: MIA.interests },
+      skills,
+      attempts: [{ skill: "read:GO", correct: true, hintsUsed: 1, ms: 900, mode: "tap", at: 1 }],
+    });
+    expect(plan.word).toBe("GO");
+    expect(plan.wordReason).toContain("tap");
+  });
+});

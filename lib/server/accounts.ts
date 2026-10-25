@@ -3,6 +3,7 @@ import path from "node:path";
 import type { AccountChild, AccountView } from "../account-types";
 import { MIA, type Attempt, type SkillId } from "../profile";
 import { hashPassword, newId, verifyPassword } from "./auth-crypto";
+import { dataDir } from "./guard";
 
 /**
  * Where parent accounts live. The demo keeps them in a JSON file on this machine;
@@ -18,6 +19,9 @@ export interface AccountStore {
   saveProgress(parentId: string, childId: string, progress: { skills: Record<SkillId, number>; episodeId: string; attempts: Attempt[] }): Promise<AccountChild | null>;
   removeChild(parentId: string, childId: string): Promise<boolean>;
   deleteParent(parentId: string): Promise<boolean>;
+  /** Null when the parent no longer exists. Session cookies carry this number; signing out moves it on. */
+  sessionVersion(parentId: string): Promise<number | null>;
+  bumpSession(parentId: string): Promise<void>;
 }
 
 type StoredChild = AccountChild & { createdAt: number };
@@ -27,6 +31,7 @@ type StoredParent = {
   passwordHash: string;
   consent: { version: string; at: number };
   createdAt: number;
+  sessionVersion?: number;
   children: StoredChild[];
 };
 type FileShape = { version: 1; parents: StoredParent[] };
@@ -139,6 +144,18 @@ export class FileAccountStore implements AccountStore {
     });
   }
 
+  async sessionVersion(parentId: string) {
+    const parent = (await this.read()).parents.find((p) => p.id === parentId);
+    return parent ? (parent.sessionVersion ?? 0) : null;
+  }
+
+  bumpSession(parentId: string) {
+    return this.change((data) => {
+      const parent = data.parents.find((p) => p.id === parentId);
+      if (parent) parent.sessionVersion = (parent.sessionVersion ?? 0) + 1;
+    });
+  }
+
   deleteParent(parentId: string) {
     return this.change((data) => {
       const before = data.parents.length;
@@ -150,8 +167,8 @@ export class FileAccountStore implements AccountStore {
 
 let store: AccountStore | null = null;
 
-/** The one store the app uses. .data/ is gitignored. */
+/** The one store the app uses. .data/ is gitignored; on Vercel it lives in /tmp (see guard.ts). */
 export function accounts(): AccountStore {
-  store ??= new FileAccountStore(process.env.PRIMER_ACCOUNTS_FILE ?? path.join(process.cwd(), ".data", "accounts.json"));
+  store ??= new FileAccountStore(process.env.PRIMER_ACCOUNTS_FILE ?? dataDir("accounts.json"));
   return store;
 }

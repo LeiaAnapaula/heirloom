@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import Book from "./Book";
 import EpisodeRunner from "./EpisodeRunner";
 import RotateHint from "./RotateHint";
@@ -21,6 +21,16 @@ type Ready = { profile: ChildProfile; episode: Episode; childId: string | null }
 export default function StoryLoader({ episode }: { episode: Episode }) {
   const [ready, setReady] = useState<Ready | null>(null);
   const [waitingFor, setWaitingFor] = useState<string | null>(null);
+
+  // Next keeps a visited page alive but hidden. When the book is closed, forget who was reading,
+  // so reopening it (maybe for another child) starts fresh instead of replaying the old story.
+  useLayoutEffect(
+    () => () => {
+      setReady(null);
+      setWaitingFor(null);
+    },
+    [],
+  );
 
   useEffect(() => {
     const abort = new AbortController();

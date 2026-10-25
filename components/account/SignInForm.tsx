@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { signIn } from "@/lib/account-client";
 import { Field, FormError, PrimaryButton } from "./fields";
 
@@ -12,6 +12,17 @@ export default function SignInForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Never leave an email and password sitting in a hidden page after it is left.
+  useLayoutEffect(
+    () => () => {
+      setEmail("");
+      setPassword("");
+      setError(null);
+      setBusy(false);
+    },
+    [],
+  );
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

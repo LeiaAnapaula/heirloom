@@ -55,6 +55,7 @@ export default function ReadAloud({ config, active, ctx }: InteractionProps<Read
     let stop: AbortController | null = null;
     let tapWaiter: ((tapped: boolean) => void) | null = null;
     let hintsUsed = 0;
+    let tappedAnswer = false;
     const startedAt = performance.now();
     const alive = () => !cancelled && ctxRef.current.alive();
     const enter = (m: Mode) => {
@@ -62,11 +63,15 @@ export default function ReadAloud({ config, active, ctx }: InteractionProps<Read
       setMode(m);
     };
 
-    // With a microphone, a tap asks for the sound-it-out hint; in tap mode it is the answer.
-    // Taps while the book is speaking are ignored.
+    // With a microphone, the first tap asks for the sound-it-out hint. After that hint, a tap
+    // is the child's answer too, so a shy or nonverbal reader can always move on. In tap mode
+    // (no microphone) a tap is the answer. Taps while the book is speaking are ignored.
     const onTap = () => {
       if (phase === "tap") tapWaiter?.(true);
-      else if (phase === "listening") stop?.abort();
+      else if (phase === "listening") {
+        if (hintsUsed > 0) tappedAnswer = true;
+        stop?.abort();
+      }
     };
     tapRef.current = onTap;
 
@@ -95,7 +100,10 @@ export default function ReadAloud({ config, active, ctx }: InteractionProps<Read
       if (answered.current) return;
       answered.current = true;
       const { skill, word } = configRef.current;
-      ctxRef.current.log({ skill, correct, hintsUsed, ms: Math.round(performance.now() - startedAt), mode: how });
+      // A tap can't show the word was read, so it never counts as reading with no help:
+      // it scores like a read after a hint, and tomorrow's plan practices the word again.
+      const hints = how === "tap" ? Math.max(hintsUsed, 1) : hintsUsed;
+      ctxRef.current.log({ skill, correct, hintsUsed: hints, ms: Math.round(performance.now() - startedAt), mode: how });
       enter("done");
       if (correct) {
         setWon(true);
@@ -121,12 +129,13 @@ export default function ReadAloud({ config, active, ctx }: InteractionProps<Read
           const heard = await listenFor((h) => matchesWord(h, word, accept), { timeoutMs: LISTEN_MS, signal: stop.signal });
           stop = null;
           if (!alive()) return;
-          if (heard.status === "unavailable") {
+          if (tappedAnswer) how = "tap";
+          else if (heard.status === "unavailable") {
             // No microphone after all: switch to tap mode. This is not the child's miss.
             voice = false;
             continue;
           }
-          if (heard.status === "match") how = "voice";
+          else if (heard.status === "match") how = "voice";
         } else {
           enter("tap");
           // After two hints the timer stops; the glowing word waits for her tap.

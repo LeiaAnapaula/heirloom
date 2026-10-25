@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { YesInteraction } from "@/lib/episode";
 import type { InteractionProps } from "@/lib/interaction";
 import { playSfx } from "@/lib/sfx";
-import { listenFor, matchesWord, stopListening } from "@/lib/listen";
+import { isYes, listenFor, stopListening } from "@/lib/listen";
 
 const NUDGES = 2;
 
@@ -36,7 +36,7 @@ export default function YesButton({ config, active, ctx }: InteractionProps<YesI
         playSfx("listen");
         await new Promise((r) => setTimeout(r, 220)); // let the ding finish before the microphone opens
         if (cancelled || done.current) return;
-        const heard = await listenFor((h) => config.accept.some((w) => matchesWord(h, w)), { timeoutMs: 6000 });
+        const heard = await listenFor((h) => isYes(h, config.accept), { timeoutMs: 6000 });
         if (cancelled || done.current || !ctx.alive()) return;
         setListening(false);
         if (heard.status === "match") return finish();

@@ -15,11 +15,11 @@ export type AccountView = {
   children: AccountChild[];
 };
 
-export const CONSENT_VERSION = "2026-10-25";
+export const CONSENT_VERSION = "2026-10-25.2";
 
 /** Shown at sign-up, word for word, and stored with the date the parent agreed. */
 export const CONSENT_TEXT =
-  "I am this child's parent or guardian. I agree that The Primer may keep my child's first name, age, interests, and reading progress to teach my child. No voice recordings are kept, and I can delete everything at any time.";
+  "I am this child's parent or guardian. I agree that The Primer may keep my child's first name, age, interests, and reading progress, only to teach my child. To write and read stories, only the first name, age, and interests are shared with our AI partners (Anthropic for the story, ElevenLabs for the narrator's voice). Spoken answers are turned into text by the browser's speech service; no voice recordings are kept. I can delete everything at any time.";
 
 const NAME = /^[\p{L}][\p{L}' -]{0,19}$/u;
 const INTEREST = /^[\p{L} ]{2,30}$/u;

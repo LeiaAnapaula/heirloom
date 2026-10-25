@@ -23,14 +23,14 @@ describe("passwords", () => {
 
 describe("session tokens", () => {
   it("round-trips and rejects tampering and expiry", () => {
-    const token = signToken({ pid: "p_1", exp: Date.now() + 60_000 }, SECRET);
+    const token = signToken({ pid: "p_1", v: 0, exp: Date.now() + 60_000 }, SECRET);
     expect(verifyToken(token, SECRET)?.pid).toBe("p_1");
     expect(verifyToken(token, "another-secret-that-is-also-long-enough")).toBeNull();
     const [body, sig] = token.split(".");
-    const forged = Buffer.from(JSON.stringify({ pid: "p_2", exp: Date.now() + 60_000 })).toString("base64url");
+    const forged = Buffer.from(JSON.stringify({ pid: "p_2", v: 0, exp: Date.now() + 60_000 })).toString("base64url");
     expect(verifyToken(`${forged}.${sig}`, SECRET)).toBeNull();
     expect(verifyToken(`${body}.`, SECRET)).toBeNull();
-    const old = signToken({ pid: "p_1", exp: Date.now() - 1 }, SECRET);
+    const old = signToken({ pid: "p_1", v: 0, exp: Date.now() - 1 }, SECRET);
     expect(verifyToken(old, SECRET)).toBeNull();
   });
 });
@@ -98,6 +98,17 @@ describe("FileAccountStore", () => {
     expect(await store.deleteParent(made.id)).toBe(true);
     expect(await store.view(made.id)).toBeNull();
     expect(readFileSync(file, "utf8")).not.toContain("q@example.com");
+  });
+
+  it("moves the session version on sign-out, and forgets it when the account is deleted", async () => {
+    const store = fresh();
+    const made = await store.createParent("s@example.com", "correct horse", "v1");
+    if (!("id" in made)) throw new Error("expected an account");
+    expect(await store.sessionVersion(made.id)).toBe(0);
+    await store.bumpSession(made.id);
+    expect(await store.sessionVersion(made.id)).toBe(1);
+    await store.deleteParent(made.id);
+    expect(await store.sessionVersion(made.id)).toBeNull();
   });
 
   it("does not lose writes that arrive at the same time", async () => {

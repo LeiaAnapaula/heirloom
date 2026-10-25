@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { canListen, listenFor, matchesWord, normalizeSpeech, parseLastNumber, parseNumber, stopListening } from "@/lib/listen";
+import { canListen, isYes, listenFor, matchesWord, normalizeSpeech, parseLastNumber, parseNumber, stopListening } from "@/lib/listen";
 import { lostStar } from "@/content/episodes/lost-star";
 import type { ReadAloudInteraction, YesInteraction } from "@/lib/episode";
 
@@ -469,5 +469,27 @@ describe("parseLastNumber", () => {
     ["lots", null],
   ])("%s -> %s", (heard, n) => {
     expect(parseLastNumber(heard)).toBe(n);
+  });
+});
+
+describe("tighter matching (review)", () => {
+  it.each(["good", "gold", "goat", "got", "gone"])("does not read %j as GO", (heard) => {
+    expect(matchesWord(heard, "go")).toBe(false);
+  });
+  it.each(["hope", "hole", "hose", "hoe", "hone"])("does not read %j as HOME", (heard) => {
+    expect(matchesWord(heard, "home")).toBe(false);
+  });
+  it.each(["hom", "homes", "homey", "hume", "hoome"])("still accepts %j as HOME", (heard) => {
+    expect(matchesWord(heard, "home", ["hume"])).toBe(true);
+  });
+  it("counts on through a soundalike at the end of a count", () => {
+    expect(parseLastNumber("one two three for")).toBe(4);
+    expect(parseLastNumber("one, two, three, four, fife")).toBe(5);
+    expect(parseLastNumber("three to")).toBe(3);
+  });
+  it("hears yes, but not a sentence with no or not in it", () => {
+    const accept = ["yes", "yeah", "sure", "ok", "okay", "i will", "uh huh"];
+    for (const h of ["yes", "yeah!", "sure", "I will", "okay book"]) expect(isYes(h, accept)).toBe(true);
+    for (const h of ["I'm not sure", "no I will not", "not okay", "no", "nope", "I don't know"]) expect(isYes(h, accept)).toBe(false);
   });
 });

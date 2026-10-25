@@ -323,27 +323,43 @@ function unstretch(s: string): string {
   return s.replace(/(.)\1+/g, "$1");
 }
 
-function levenshtein(a: string, b: string): number {
-  if (a === b) return 0;
-  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
-  for (let i = 1; i <= a.length; i++) {
-    const row = [i];
-    for (let j = 1; j <= b.length; j++) {
-      row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-    }
-    prev = row;
-  }
-  return prev[b.length];
-}
 
 /** Close enough to a single-token word, the way a young reader or a recognizer gets it wrong. */
+const VOWELS = new Set("aeiouy");
+
+/**
+ * Close enough to count, without accepting a different real word. Young readers and
+ * recognizers clip or stretch the END of a word ("hom", "homes", "goh") and blur vowels
+ * ("son" for "sun"), but a changed consonant is a different word ("hope", "hole", "gold").
+ */
 function nearWord(token: string, word: string): boolean {
+  if (token[0] !== word[0]) return false;
   if (word.length === 2) {
-    // "goh", "gow", "goes": short tokens that begin with the word
-    return token.length <= 4 && token.startsWith(word);
+    // "goh", "gow", "goe", "goes": the word plus a breathy or plural ending
+    return token.startsWith(word) && ["", "h", "w", "e", "s", "es"].includes(token.slice(2));
   }
-  // "hom", "homes", "hume": one letter off, with the same first sound
-  return word.length >= 3 && token[0] === word[0] && levenshtein(token, word) <= 1;
+  if (word.length < 3) return false;
+  if (token.length === word.length - 1) return word.startsWith(token); // "hom"
+  if (token.length > word.length) return token.length <= word.length + 2 && token.startsWith(word); // "homes", "homey"
+  if (token.length !== word.length) return false;
+  let diffs = 0;
+  for (let i = 0; i < word.length; i++) {
+    if (token[i] === word[i]) continue;
+    if (++diffs > 1 || !VOWELS.has(token[i]) || !VOWELS.has(word[i])) return false;
+  }
+  return diffs === 1; // "son", "hume"
+}
+
+const NEGATIONS = new Set(["no", "not", "nope", "nah", "dont", "wont", "never", "cant", "nothing"]);
+
+/**
+ * Did the child say yes? Any of the accepted words, but never in a sentence with a "no" or
+ * "not" in it: "I'm not sure" and "no, I won't" must not turn the page as a yes.
+ */
+export function isYes(heard: string, accept: string[]): boolean {
+  const said = normalizeSpeech(heard);
+  if (said.split(" ").some((t) => NEGATIONS.has(t))) return false;
+  return accept.some((w) => matchesWord(said, w));
 }
 
 /**
@@ -423,12 +439,16 @@ const NUMBER_SOUNDALIKES: Record<string, number> = {
 export function parseLastNumber(heard: string): number | null {
   const tokens = normalizeSpeech(heard).match(/\d+|[a-z]+/g) ?? [];
   let real: number | null = null;
-  let alike: number | null = null;
+  let alike: number | null = null; // the last soundalike said after the last real number
   for (const t of tokens) {
     const n = /^\d+$/.test(t) ? Number(t) : NUMBER_WORDS[t];
-    if (n !== undefined && n >= 1 && n <= 10) real = n;
-    else if (t in NUMBER_SOUNDALIKES) alike = NUMBER_SOUNDALIKES[t];
+    if (n !== undefined && n >= 1 && n <= 10) {
+      real = n;
+      alike = null;
+    } else if (t in NUMBER_SOUNDALIKES) alike = NUMBER_SOUNDALIKES[t];
   }
+  // "one, two, three, for": a soundalike that continues the count is the next number.
+  if (real !== null && alike === real + 1) return alike;
   return real ?? alike;
 }
 

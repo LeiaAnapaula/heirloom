@@ -123,3 +123,12 @@ describe("checkLines", () => {
     expect(classify).not.toHaveBeenCalled();
   });
 });
+
+describe("more word forms (review)", () => {
+  it.each(["The dragon stabbed the moon.", "He was choking.", "A kidnapper came.", "Leo hates the dark.", "What a loser."])("blocks %j", (line) => {
+    expect(blocklistCheck(line).safe).toBe(false);
+  });
+  it.each(["A shooting star zoomed by.", "Look at the dinosaur skeleton!", "The volcano is smoky."])("still allows %j", (line) => {
+    expect(blocklistCheck(line).safe).toBe(true);
+  });
+});
