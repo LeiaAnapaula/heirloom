@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import EpisodeRunner from "@/components/EpisodeRunner";
+import StoryLoader from "@/components/StoryLoader";
 import { episodes } from "@/content/episodes/lost-star";
 
 export function generateStaticParams() {
@@ -20,5 +20,5 @@ async function EpisodeLoader({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const episode = episodes[id];
   if (!episode) notFound();
-  return <EpisodeRunner episode={episode} />;
+  return <StoryLoader episode={episode} />;
 }

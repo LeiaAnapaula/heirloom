@@ -1,6 +1,8 @@
 import Link from "next/link";
 import OpenBookButton from "@/components/OpenBookButton";
+import { ReaderPicker, ReaderTitle } from "@/components/ReaderPicker";
 import Starfield from "@/components/Starfield";
+import { lostStar } from "@/content/episodes/lost-star";
 
 export default function TitleScreen() {
   return (
@@ -12,9 +14,10 @@ export default function TitleScreen() {
       >
         The Primer
       </h1>
-      <p className="mt-4 text-xl font-medium text-mist sm:text-2xl">Mia and the Lost Star</p>
+      <ReaderTitle title={lostStar.title} />
 
-      <OpenBookButton href="/episode/lost-star" />
+      <OpenBookButton href={`/episode/${lostStar.id}`} />
+      <ReaderPicker />
 
       <Link
         href="/parent"

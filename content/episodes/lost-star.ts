@@ -122,7 +122,7 @@ export const lostStar: Episode = {
     {
       id: "home",
       art: "star-home",
-      narration: [{ id: "s6-read", text: "Read the magic word to send the star home." }],
+      narration: [{ id: "s6-read", text: "Read the magic word to send the star back to the sky." }],
       interaction: {
         type: "readAloud",
         word: "home",
