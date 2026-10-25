@@ -6,12 +6,12 @@ import Book from "./Book";
 import EpisodeRunner from "./EpisodeRunner";
 import RotateHint from "./RotateHint";
 import Starfield from "./Starfield";
-import { getActiveProfile } from "@/lib/active-profile";
+import { loadReader } from "@/lib/active-profile";
 import type { Episode } from "@/lib/episode";
 import { MIA, type ChildProfile } from "@/lib/profile";
 import { getNarration } from "@/lib/story";
 
-type Ready = { profile: ChildProfile; episode: Episode };
+type Ready = { profile: ChildProfile; episode: Episode; childId: string | null };
 
 /**
  * Finds out who is reading, and for anyone but Mia asks the story brain to retell the
@@ -25,8 +25,9 @@ export default function StoryLoader({ episode }: { episode: Episode }) {
   useEffect(() => {
     const abort = new AbortController();
     (async () => {
-      const profile = getActiveProfile();
-      if (profile.id === MIA.id) return setReady({ profile, episode });
+      const { profile, childId } = await loadReader();
+      if (abort.signal.aborted) return;
+      if (profile.id === MIA.id) return setReady({ profile, episode, childId });
       setWaitingFor(profile.name);
       const story = await getNarration(
         { name: profile.name, age: profile.age, interests: profile.interests },
@@ -35,12 +36,12 @@ export default function StoryLoader({ episode }: { episode: Episode }) {
       );
       // Any problem (no key, a slow reply, a line that failed the safety check) quietly
       // means the written story, which still says this child's name.
-      if (!abort.signal.aborted) setReady({ profile, episode: story.episode });
+      if (!abort.signal.aborted) setReady({ profile, episode: story.episode, childId });
     })();
     return () => abort.abort();
   }, [episode]);
 
-  if (ready) return <EpisodeRunner episode={ready.episode} profile={ready.profile} />;
+  if (ready) return <EpisodeRunner episode={ready.episode} profile={ready.profile} childId={ready.childId} />;
 
   return (
     <main className="relative isolate flex h-dvh flex-col items-center justify-center gap-5 overflow-hidden">

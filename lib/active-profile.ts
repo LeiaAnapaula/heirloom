@@ -1,3 +1,5 @@
+import type { AccountChild, AccountView } from "./account-types";
+import { fetchAccount } from "./account-client";
 import { DEMO_PROFILES, MIA, type ChildProfile } from "./profile";
 
 const KEY = "primer.profile.v1";
@@ -12,7 +14,7 @@ function storedId(): string | null {
   }
 }
 
-/** Remember which child is reading on this device. */
+/** Remember which child is reading on this device (a demo child's id or a real child's id). */
 export function setActiveProfile(id: string): void {
   memory = id;
   try {
@@ -33,12 +35,37 @@ export function subscribeActiveProfile(onChange: () => void): () => void {
   };
 }
 
+/** The remembered id, whatever kind of child it names. */
 export function activeProfileId(): string {
-  return getActiveProfile().id;
+  return storedId() ?? MIA.id;
 }
 
-/** Which made-up child the book reads to. Mia unless a grown-up picked someone else. */
+/** Which made-up demo child the book reads to when nobody is signed in. Mia unless a grown-up picked someone else. */
 export function getActiveProfile(): ChildProfile {
   const id = storedId();
   return DEMO_PROFILES.find((p) => p.id === id) ?? MIA;
+}
+
+export function childToProfile(c: AccountChild): ChildProfile {
+  return { id: c.id, name: c.name, age: c.age, interests: c.interests, skills: c.skills };
+}
+
+export type Reader = {
+  profile: ChildProfile;
+  childId: string | null; // set when the reader is a real child in a signed-in account
+  account: AccountView | null;
+};
+
+/**
+ * Who the book is reading to right now: a signed-in parent's chosen child (or their first),
+ * otherwise the demo child.
+ */
+export async function loadReader(): Promise<Reader> {
+  const account = await fetchAccount();
+  if (account && account.children.length) {
+    const id = storedId();
+    const child = account.children.find((c) => c.id === id) ?? account.children[0];
+    return { profile: childToProfile(child), childId: child.id, account };
+  }
+  return { profile: getActiveProfile(), childId: null, account };
 }

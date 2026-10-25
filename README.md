@@ -21,9 +21,20 @@ Copy `.env.example` to `.env.local` and fill in what you have. Everything works 
 |---|---|---|
 | `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID` | The soft ElevenLabs narrator | The browser's own voice |
 | `ANTHROPIC_API_KEY` | Stories retold for each child's interests (Leo, Ava, or a real child) | The written story, with the child's name |
+| `SESSION_SECRET` | Signs grown-up sign-in cookies (required in production) | Made for you on first run in development |
 
 With the ElevenLabs keys set, run `npm run audio` once to pre-make Mia's whole episode into `public/audio/`.
 Those files play instantly and cost nothing after the first run.
+
+## Grown-up accounts
+
+A parent can make an account at `/join`, agree to the note for parents, and add up to four children (first name, age,
+and one to three things they love). The book then reads to that child by name, retells the story around their interests
+(with an Anthropic key), and saves their progress to the account so it follows them to any device.
+
+For the demo, accounts live in `.data/accounts.json` on this machine (never committed): passwords are hashed with scrypt,
+sign-in is a signed httpOnly cookie, and **Delete account and all data** on the grown-up page removes everything.
+To let people sign up from other devices, swap `lib/server/accounts.ts` for a hosted database (Supabase is the plan) and deploy.
 
 ## On an iPad
 

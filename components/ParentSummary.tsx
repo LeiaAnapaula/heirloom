@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import FamilyPanel from "./account/FamilyPanel";
 import { Suspense, use, useEffect, useEffectEvent, useState, useSyncExternalStore, type ReactNode } from "react";
 import { browser } from "react-dom";
 import { StarSprite } from "./art/sprites";
@@ -57,6 +58,7 @@ function GrownUpCorner() {
       {unlocked ? (
         <motion.div key="summary" initial={{ opacity: 0 }} animate={{ opacity: 1, transition: fade }}>
           <Summary />
+          <FamilyPanel />
         </motion.div>
       ) : (
         <motion.div key="gate" exit={{ opacity: 0, transition: fade }}>

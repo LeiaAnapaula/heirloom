@@ -17,6 +17,7 @@ import YesButton from "./YesButton";
 import { allLines, resolveLine, withName, type Episode, type Line, type Screen } from "@/lib/episode";
 import type { InteractionContext } from "@/lib/interaction";
 import { MIA, type ChildProfile } from "@/lib/profile";
+import { saveProgress } from "@/lib/account-client";
 import { finishSession, logAttempt, startSession } from "@/lib/session";
 import { playSfx, preloadSfx, sfxForEffect, unlockSfx } from "@/lib/sfx";
 import { play, preload, stop as stopVoice, unlockAudio } from "@/lib/voice";
@@ -58,7 +59,15 @@ function hasBeenTapped(): boolean {
   return ua ? ua.hasBeenActive : true;
 }
 
-export default function EpisodeRunner({ episode, profile = MIA }: { episode: Episode; profile?: ChildProfile }) {
+export default function EpisodeRunner({
+  episode,
+  profile = MIA,
+  childId = null,
+}: {
+  episode: Episode;
+  profile?: ChildProfile;
+  childId?: string | null; // a real child in a signed-in account: progress is saved to the account
+}) {
   const [index, setIndex] = useState(0);
   const [phase, setPhase] = useState<Phase>("closed");
   const [caption, setCaption] = useState<Line | null>(null);
@@ -132,10 +141,18 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
     } else {
       gen.current++;
       setCaption(null);
-      finishSession();
+      const session = finishSession();
+      // A signed-in family keeps progress on any device; a guest's stays on this one only.
+      if (childId && session) {
+        void saveProgress(childId, {
+          skills: session.skills,
+          episodeId: episode.id,
+          attempts: session.attempts.map((a) => ({ skill: a.skill, correct: a.correct, hintsUsed: a.hintsUsed, ms: a.ms, mode: a.mode, note: a.note })),
+        });
+      }
       setPhaseBoth("end");
     }
-  }, [index, narrate, runScreen, screens]);
+  }, [childId, episode.id, index, narrate, runScreen, screens]);
 
   // What this screen's interaction may do. A new object per screen, so nothing leaks between pages.
   const ctx = useMemo<InteractionContext>(

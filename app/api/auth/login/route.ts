@@ -1,0 +1,21 @@
+import { NextResponse } from "next/server";
+import { cleanEmail } from "@/lib/account-types";
+import { accounts } from "@/lib/server/accounts";
+import { clearTries, sameOriginJson, startSession, tooManyTries } from "@/lib/server/session";
+
+export async function POST(req: Request) {
+  if (!sameOriginJson(req)) return NextResponse.json({ error: "Bad request." }, { status: 400 });
+  const body = (await req.json().catch(() => null)) as { email?: unknown; password?: unknown } | null;
+  const email = cleanEmail(body?.email);
+  const password = typeof body?.password === "string" ? body.password : "";
+  if (!email || !password) return NextResponse.json({ error: "Enter your email and password." }, { status: 400 });
+  if (tooManyTries(email)) {
+    return NextResponse.json({ error: "Too many tries. Wait a few minutes, then try again." }, { status: 429 });
+  }
+  const parent = await accounts().verifyLogin(email, password);
+  // Same answer for a wrong email and a wrong password, so nobody can probe which emails exist.
+  if (!parent) return NextResponse.json({ error: "That email and password don't match." }, { status: 401 });
+  clearTries(email);
+  await startSession(parent.id);
+  return NextResponse.json({ ok: true });
+}
