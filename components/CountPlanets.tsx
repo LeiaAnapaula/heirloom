@@ -58,6 +58,39 @@ export default function CountPlanets({ config, active, ctx }: InteractionProps<C
   const flashKey = useRef(0);
   const sleep = useSleep();
 
+  // A living 3D world for this page, built and verified by Gemini 4 Argon (scripts/build-world.ts).
+  // Used only when it was verified for this lesson's number; otherwise the drawn planets stay.
+  const [world, setWorld] = useState<string | null>(null);
+  const [worldReady, setWorldReady] = useState(false);
+  const frame = useRef<HTMLIFrameElement>(null);
+  const added = useRef(first);
+  useEffect(() => {
+    let live = true;
+    fetch("/worlds/current.json", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { planets?: number; path?: string } | null) => {
+        if (live && j?.path && j.planets === first) setWorld(j.path);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [first]);
+  useEffect(() => {
+    type World = { highlight(i: number, on: boolean): void; addPlanet(): void };
+    const w = (frame.current?.contentWindow as (Window & { __world?: World }) | null)?.__world;
+    if (!worldReady || !w) return;
+    try {
+      while (added.current < shown) {
+        w.addPlanet();
+        added.current++;
+      }
+      for (let i = 0; i < shown; i++) w.highlight(i, i < lit);
+    } catch {
+      // the world is decoration; counting still works without it
+    }
+  }, [worldReady, lit, shown]);
+
   // While the question is read, the first planets light up one at a time.
   useEffect(() => {
     const ids = Array.from({ length: first }, (_, i) =>
@@ -226,7 +259,16 @@ export default function CountPlanets({ config, active, ctx }: InteractionProps<C
     <div className="@container absolute inset-0">
       <Flyby reduce={reduce} />
 
-      <div role="img" aria-label={`${shown} planets`} className="absolute inset-0">
+      {world && (
+        <iframe
+          ref={frame}
+          src={world}
+          title={`${shown} planets`}
+          onLoad={() => setWorldReady(true)}
+          className="pointer-events-none absolute inset-0 h-full w-full border-0"
+        />
+      )}
+      <div role="img" aria-label={`${shown} planets`} className={`absolute inset-0 ${world ? "hidden" : ""}`}>
         {SLOTS.slice(0, shown).map((slot, i) => (
           <PlanetSlot
             key={slot.hue}

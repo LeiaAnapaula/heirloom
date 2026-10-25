@@ -3,6 +3,29 @@
 A storybook for children ages 4 to 6 that wakes up, reads aloud, and listens back.
 The full build spec lives in `CLAUDE.md`.
 
+## Gemini 4 Argon hackathon (Oct 25, 2026): what was built here
+
+Everything in this repo was written on Oct 25, 2026 during the hackathon (first commit 11:40 AM, see `git log`).
+
+**Track: More Dimensions.** One-shot AI art breaks lessons: a counting page that shows 5 planets when the
+lesson says 4 teaches the wrong number. The **World Builder** (`scripts/build-world.ts`) makes one
+**Antigravity managed-agent** call with **Gemini 4 Argon** in a Google-hosted sandbox. Argon:
+
+1. builds the lesson page as a living Three.js world (`scene.html`),
+2. writes a headless-Chrome check of the lesson (`verify.mjs`): exact planet count, everything in frame,
+   nothing on the book's fold, the narration and number-button bands clear, readable top, it moves, zero errors,
+   and the page's API (`highlight`, `addPlanet`) works,
+3. renders, reads the failures and screenshots, fixes the scene, and loops until every check passes.
+
+The verified world, its `report.json` (score per round) and a screenshot per round come home to
+`public/worlds/count-<N>/`, and the counting page in the book loads it: the child still says or taps the
+number, and the book lights each planet as it counts.
+
+```bash
+npx tsx scripts/argon-hello.ts          # first calls: Argon, then the managed agent
+npx tsx scripts/build-world.ts 4        # build and verify the 4-planet counting page
+```
+
 ## Run it
 
 ```bash
