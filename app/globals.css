@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+/*
+  The Primer design tokens.
+  Night sky for the world, warm gold for anything alive or touchable,
+  moonlight cream for words.
+*/
+@theme {
+  --color-ink: #0a0f2a; /* deepest night, the page behind everything */
+  --color-night: #121a40; /* the sky inside the book */
+  --color-dusk: #1e2a5e; /* raised surfaces, planets in shadow */
+  --color-violet: #3b3478; /* horizon glow, secondary light */
+  --color-gold: #f5c969; /* starlight: buttons, glow, the star */
+  --color-gold-deep: #d99a2b; /* gold in shadow, pressed states */
+  --color-moon: #f7f0dc; /* narration text, paper edges */
+  --color-mist: #a9b8e8; /* quiet text, inactive things */
+
+  --ease-float: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@theme inline {
+  --font-sans: var(--font-quicksand), ui-rounded, system-ui, sans-serif;
+}
+
+html,
+body {
+  background: var(--color-ink);
+  color: var(--color-moon);
+  font-family: var(--font-sans);
+  /* No rubber-banding, no long-press menus, no double-tap zoom: it is a book, not a web page. */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
+body {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-gold);
+  outline-offset: 4px;
+  border-radius: 999px;
+}
+
+/* The one glow every touchable thing shares. */
+@keyframes primer-breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgb(245 201 105 / 0.55),
+      0 0 24px 4px rgb(245 201 105 / 0.28),
+      0 0 64px 12px rgb(245 201 105 / 0.12);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgb(245 201 105 / 0.8),
+      0 0 36px 8px rgb(245 201 105 / 0.42),
+      0 0 96px 24px rgb(245 201 105 / 0.2);
+  }
+}
+
+.glow-button {
+  background: radial-gradient(120% 140% at 50% 0%, #ffe3a3 0%, var(--color-gold) 45%, var(--color-gold-deep) 100%);
+  color: var(--color-ink);
+  animation: primer-breathe 3.2s ease-in-out infinite;
+  transition:
+    transform 160ms var(--ease-float),
+    filter 160ms ease;
+}
+.glow-button:active {
+  transform: scale(0.96);
+  filter: brightness(0.95);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glow-button {
+    animation: none;
+    box-shadow:
+      0 0 0 1px rgb(245 201 105 / 0.7),
+      0 0 32px 6px rgb(245 201 105 / 0.35);
+  }
+}
