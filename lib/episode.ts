@@ -26,6 +26,7 @@ export type ReadAloudInteraction = {
   skill: SkillId;
   accept: string[]; // close matches a young reader or the recognizer may produce, e.g. "goh"
   giveUp: Line[]; // after two hints: encourage, say the word together, move on
+  place: { x: number; y: number }; // where the word sits on the spread, in % (center of the word)
 };
 
 export type TraceInteraction = {

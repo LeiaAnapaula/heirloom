@@ -1,20 +1,34 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { motion } from "framer-motion";
 import Book, { OPEN_MS, TURN_MS } from "./Book";
 import Page, { Caption } from "./Page";
 import Scene, { type Mood } from "./Scene";
 import Starfield from "./Starfield";
 import { StarSprite } from "./art/sprites";
+import ReadAloud from "./ReadAloud";
+import YesButton from "./YesButton";
 import { allLines, resolveLine, withName, type Episode, type Line, type Screen } from "@/lib/episode";
+import type { InteractionContext } from "@/lib/interaction";
 import { MIA, type ChildProfile } from "@/lib/profile";
 import { play, preload, stop as stopVoice, unlockAudio } from "@/lib/voice";
 
 type Phase = "closed" | "glowing" | "opening" | "intro" | "interact" | "success" | "end";
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+// How long each celebration needs on screen before the page may turn, so a quick
+// "You did it!" never cuts off the rocket mid-flight.
+const CELEBRATION_MS: Record<NonNullable<Screen["onSuccess"]["effect"]>, number> = {
+  turn: 400,
+  liftoff: 3000,
+  swoop: 900,
+  sparkle: 1400,
+  fall: 900,
+  home: 5000,
+};
 
 /** Every line a screen might speak, so its audio can be warmed before the page turns. */
 function screenLines(episode: Episode, screen: Screen | undefined, name: string): Line[] {
@@ -44,6 +58,7 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
   const [caption, setCaption] = useState<Line | null>(null);
   const [wordIndex, setWordIndex] = useState(-1);
   const [mood, setMood] = useState<Mood>("idle");
+  const [screenGen, setScreenGen] = useState(0); // which generation the mounted interaction belongs to
 
   // Every screen gets a new generation number. Async work from an old screen
   // checks it and quietly stops, so nothing from page 2 can talk over page 3.
@@ -77,6 +92,7 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
       const g = ++gen.current;
       stopVoice();
       preload(screenLines(episode, screens[i + 1], profile.name));
+      setScreenGen(g);
       setIndex(i);
       setMood("idle");
       setCaption(null);
@@ -96,8 +112,10 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
     const i = index;
     setPhaseBoth("success");
     setMood("celebrate");
-    await narrate(screens[i].onSuccess.narration);
-    await wait(900);
+    const started = Date.now();
+    const { narration, effect } = screens[i].onSuccess;
+    await narrate(narration);
+    await wait(Math.max(900, (effect ? CELEBRATION_MS[effect] : 0) - (Date.now() - started)));
     if (gen.current !== g) return;
     if (i + 1 < screens.length) {
       runScreen(i + 1, true);
@@ -107,6 +125,19 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
       setPhaseBoth("end");
     }
   }, [index, narrate, runScreen, screens]);
+
+  // What this screen's interaction may do. A new object per screen, so nothing leaks between pages.
+  const ctx = useMemo<InteractionContext>(
+    () => ({
+      name: profile.name,
+      narrate,
+      log: () => {}, // skill scores arrive in M7
+      succeed: () => void succeed(),
+      alive: () => gen.current === screenGen,
+      help: screen.onHelp.narration,
+    }),
+    [narrate, profile.name, screen, screenGen, succeed],
+  );
 
   // The book wakes up: it sits closed, glows, then opens on its own.
   const wake = useCallback(async () => {
@@ -170,7 +201,9 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
           <EndPage title={withName(episode.next.title, profile.name)} onAgain={restart} />
         ) : (
           <Page art={<Scene art={screen.art} mood={mood} />} caption={<Caption line={caption} wordIndex={wordIndex} />}>
-            {phase === "interact" && <NextStandIn onNext={succeed} />}
+            {(phase === "intro" || phase === "interact" || phase === "success") && (
+              <Interaction key={`${screen.id}-${screenGen}`} screen={screen} active={phase === "interact"} ctx={ctx} onNext={succeed} />
+            )}
           </Page>
         )}
       </Book>
@@ -193,7 +226,20 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
   );
 }
 
-/** M2 stand-in for the real interactions, which arrive in M4 to M6. */
+/** Picks the interaction a screen asks for. Screens without one yet keep the M2 "Next" stand-in. */
+function Interaction({ screen, active, ctx, onNext }: { screen: Screen; active: boolean; ctx: InteractionContext; onNext: () => void }) {
+  const i = screen.interaction;
+  switch (i.type) {
+    case "yes":
+      return <YesButton config={i} active={active} ctx={ctx} />;
+    case "readAloud":
+      return <ReadAloud config={i} active={active} ctx={ctx} />;
+    default:
+      return active ? <NextStandIn onNext={onNext} /> : null;
+  }
+}
+
+/** M2 stand-in for interactions that arrive in M5 and M6. */
 function NextStandIn({ onNext }: { onNext: () => void }) {
   return (
     <div className="absolute inset-x-0 bottom-[9%] flex justify-center">

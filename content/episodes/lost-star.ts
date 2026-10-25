@@ -34,6 +34,7 @@ export const lostStar: Episode = {
         word: "go",
         skill: "read:GO",
         accept: ["goh", "gow", "goe", "geaux", "gogo", "go go"],
+        place: { x: 70, y: 56 },
         giveUp: [
           { id: "s2-giveup-1", text: "Great try, {name}! That word says GO.", say: "Great try, {name}! That word says go." },
           { id: "s2-giveup-2", text: "Let's say it together. GO!", say: "Let's say it together. Go!", highlight: [0, 1] },
@@ -127,6 +128,7 @@ export const lostStar: Episode = {
         word: "home",
         skill: "read:HOME",
         accept: ["hom", "hoam", "holm", "homes", "homey", "hume"],
+        place: { x: 50, y: 40 },
         giveUp: [
           { id: "s6-giveup-1", text: "Great try, {name}! That word says HOME.", say: "Great try, {name}! That word says home." },
           { id: "s6-giveup-2", text: "Let's say it together. HOME!", say: "Let's say it together. Home!", highlight: [0, 1, 2, 3] },
