@@ -16,6 +16,7 @@ import YesButton from "./YesButton";
 import { allLines, resolveLine, withName, type Episode, type Line, type Screen } from "@/lib/episode";
 import type { InteractionContext } from "@/lib/interaction";
 import { MIA, type ChildProfile } from "@/lib/profile";
+import { finishSession, logAttempt, startSession } from "@/lib/session";
 import { play, preload, stop as stopVoice, unlockAudio } from "@/lib/voice";
 
 type Phase = "closed" | "glowing" | "opening" | "intro" | "interact" | "success" | "end";
@@ -125,6 +126,7 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
     } else {
       gen.current++;
       setCaption(null);
+      finishSession();
       setPhaseBoth("end");
     }
   }, [index, narrate, runScreen, screens]);
@@ -134,7 +136,7 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
     () => ({
       name: profile.name,
       narrate,
-      log: () => {}, // skill scores arrive in M7
+      log: (attempt) => void logAttempt(attempt),
       succeed: () => void succeed(),
       alive: () => gen.current === screenGen,
       help: screen.onHelp.narration,
@@ -145,6 +147,7 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
   // The book wakes up: it sits closed, glows, then opens on its own.
   const wake = useCallback(async () => {
     const g = ++gen.current;
+    startSession(profile);
     preload(screenLines(episode, screens[0], profile.name));
     await wait(500);
     if (gen.current !== g) return;
@@ -155,7 +158,7 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
     await wait(OPEN_MS);
     if (gen.current !== g) return;
     runScreen(0, false);
-  }, [episode, profile.name, runScreen, screens]);
+  }, [episode, profile, runScreen, screens]);
 
   // Opened from the title screen, the tap there already woke the narrator.
   // Opened directly (a reload, a shared link), the child taps the sleeping book first.
@@ -175,6 +178,7 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
   const restart = () => {
     gen.current++;
     stopVoice();
+    startSession(profile);
     setIndex(0);
     setCaption(null);
     setMood("idle");

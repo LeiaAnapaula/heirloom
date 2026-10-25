@@ -1,11 +1,20 @@
-import Link from "next/link";
+import type { Metadata } from "next";
+import ParentSummary from "@/components/ParentSummary";
+import Starfield from "@/components/Starfield";
 
-// Placeholder until M7 builds the real summary.
+export const metadata: Metadata = {
+  title: "For grown-ups | The Primer",
+};
+
+// No request data here, ever. The parent check and the results render in the browser,
+// from this device, so the whole route stays a static page.
+export const ensureStatic = "navigation";
+
 export default function ParentPage() {
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-ink px-6 text-center">
-      <p className="text-2xl font-semibold text-moon">The grown-up summary is coming soon.</p>
-      <Link href="/" className="text-lg font-semibold text-gold">Back to the book</Link>
+    <main className="relative isolate min-h-dvh px-4 sm:px-6">
+      <Starfield density={0.8} />
+      <ParentSummary />
     </main>
   );
 }
