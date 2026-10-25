@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { canListen, listenFor, matchesWord, normalizeSpeech, parseNumber, stopListening } from "@/lib/listen";
+import { canListen, listenFor, matchesWord, normalizeSpeech, parseLastNumber, parseNumber, stopListening } from "@/lib/listen";
 import { lostStar } from "@/content/episodes/lost-star";
 import type { ReadAloudInteraction, YesInteraction } from "@/lib/episode";
 
@@ -453,5 +453,21 @@ describe("listenFor with a speech engine", () => {
     vi.stubGlobal("window", { isSecureContext: false, webkitSpeechRecognition: FakeClass });
     expect(listen.canListen()).toBe(false);
     await expect(listen.listenFor(["go"], { timeoutMs: 5000 })).resolves.toEqual({ status: "unavailable", reason: "unsupported" });
+  });
+});
+
+describe("parseLastNumber", () => {
+  it.each([
+    ["four", 4],
+    ["one two three four", 4],
+    ["one, two, three, four, five!", 5],
+    ["I want to say four", 4],
+    ["4 planets", 4],
+    ["it's for", 4],
+    ["to", 2],
+    ["", null],
+    ["lots", null],
+  ])("%s -> %s", (heard, n) => {
+    expect(parseLastNumber(heard)).toBe(n);
   });
 });

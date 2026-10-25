@@ -415,6 +415,23 @@ const NUMBER_SOUNDALIKES: Record<string, number> = {
  * "to" is 2) but only when no real number was said, so "I want to say four" is 4.
  * Null when there is no number.
  */
+/**
+ * The last number in a phrase. A child counting out loud ("one, two, three, four!") means
+ * the last one, and an answer can arrive after filler ("I want to say four"). Real number
+ * words beat soundalikes, so "to" in that sentence does not count as 2.
+ */
+export function parseLastNumber(heard: string): number | null {
+  const tokens = normalizeSpeech(heard).match(/\d+|[a-z]+/g) ?? [];
+  let real: number | null = null;
+  let alike: number | null = null;
+  for (const t of tokens) {
+    const n = /^\d+$/.test(t) ? Number(t) : NUMBER_WORDS[t];
+    if (n !== undefined && n >= 1 && n <= 10) real = n;
+    else if (t in NUMBER_SOUNDALIKES) alike = NUMBER_SOUNDALIKES[t];
+  }
+  return real ?? alike;
+}
+
 export function parseNumber(heard: string): number | null {
   const tokens = normalizeSpeech(heard).match(/\d+|[a-z]+/g) ?? [];
   for (const t of tokens) {

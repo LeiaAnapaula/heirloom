@@ -8,6 +8,8 @@ import Page, { Caption } from "./Page";
 import Scene, { type Mood } from "./Scene";
 import Starfield from "./Starfield";
 import { StarSprite } from "./art/sprites";
+import CountPlanets from "./CountPlanets";
+import FeatherDrop from "./FeatherDrop";
 import MagicPencil from "./MagicPencil";
 import ReadAloud from "./ReadAloud";
 import YesButton from "./YesButton";
@@ -203,7 +205,7 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
         ) : (
           <Page art={<Scene art={screen.art} mood={mood} />} caption={<Caption line={caption} wordIndex={wordIndex} />}>
             {(phase === "intro" || phase === "interact" || phase === "success") && (
-              <Interaction key={`${screen.id}-${screenGen}`} screen={screen} active={phase === "interact"} ctx={ctx} onNext={succeed} />
+              <Interaction key={`${screen.id}-${screenGen}`} screen={screen} active={phase === "interact"} ctx={ctx} />
             )}
           </Page>
         )}
@@ -227,8 +229,8 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
   );
 }
 
-/** Picks the interaction a screen asks for. Screens without one yet keep the M2 "Next" stand-in. */
-function Interaction({ screen, active, ctx, onNext }: { screen: Screen; active: boolean; ctx: InteractionContext; onNext: () => void }) {
+/** Picks the interaction a screen asks for. Every page needs the child to act before it turns. */
+function Interaction({ screen, active, ctx }: { screen: Screen; active: boolean; ctx: InteractionContext }) {
   const i = screen.interaction;
   switch (i.type) {
     case "yes":
@@ -237,20 +239,11 @@ function Interaction({ screen, active, ctx, onNext }: { screen: Screen; active: 
       return <ReadAloud config={i} active={active} ctx={ctx} />;
     case "trace":
       return <MagicPencil config={i} active={active} ctx={ctx} />;
-    default:
-      return active ? <NextStandIn onNext={onNext} /> : null;
+    case "count":
+      return <CountPlanets config={i} active={active} ctx={ctx} />;
+    case "feather":
+      return <FeatherDrop config={i} active={active} ctx={ctx} />;
   }
-}
-
-/** M2 stand-in for interactions that arrive in M6. */
-function NextStandIn({ onNext }: { onNext: () => void }) {
-  return (
-    <div className="absolute inset-x-0 bottom-[9%] flex justify-center">
-      <button onClick={onNext} className="glow-button rounded-full px-10 py-4 text-2xl font-bold">
-        Next
-      </button>
-    </div>
-  );
 }
 
 function EndPage({ title, onAgain }: { title: string; onAgain: () => void }) {
