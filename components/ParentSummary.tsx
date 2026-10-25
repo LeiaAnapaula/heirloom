@@ -222,8 +222,7 @@ function EmptyState() {
   return (
     <section className="mx-auto flex min-h-dvh max-w-[30rem] flex-col items-center justify-center py-16 text-center">
       <StarSprite className="h-20 w-20" />
-      <p className="mt-6 text-sm font-bold uppercase tracking-[0.2em] text-gold/85">For grown-ups</p>
-      <p className="mt-3 text-2xl font-medium leading-relaxed text-moon [text-wrap:balance]">
+      <p className="mt-6 text-2xl font-medium leading-relaxed text-moon [text-wrap:balance]">
         Read the story together, then come back here to see what was learned.
       </p>
       <Link href="/" className="glow-button mt-10 rounded-full px-10 py-5 text-2xl font-bold">
@@ -253,21 +252,18 @@ function Report({ session }: { session: Session }) {
         <BackToBook quiet />
       </nav>
 
-      <header className="mt-4">
-        <p className="text-sm font-bold uppercase tracking-[0.2em] text-gold/85">For grown-ups</p>
-        <h1 className="mt-2 bg-gradient-to-b from-[#fff4d6] via-gold to-gold-deep bg-clip-text pb-1 text-4xl font-semibold tracking-tight text-transparent sm:text-5xl">
+      <header className="mt-6">
+        <h1 className="bg-gradient-to-b from-[#fff4d6] via-gold to-gold-deep bg-clip-text pb-1 text-4xl font-semibold tracking-tight text-transparent sm:text-5xl">
           {name}&apos;s {isToday ? "story today" : "latest story"}
         </h1>
-        <p className="mt-3 text-lg text-mist">
-          {date} · {withName(lostStar.title, name)}
-        </p>
-        <p className="mt-1 text-base text-mist/80">
-          {session.finished ? "Read to the end" : "Stopped partway through"}
-          {minutes >= 1 ? ` · about ${minutes} ${minutes === 1 ? "minute" : "minutes"}` : ""}
+        <p className="mt-3 text-lg text-mist">{date}</p>
+        <p className="mt-1 text-lg text-mist/85">
+          {withName(lostStar.title, name)}, {session.finished ? "read to the end" : "stopped partway through"}
+          {minutes >= 1 ? ` in about ${minutes} ${minutes === 1 ? "minute" : "minutes"}` : ""}.
         </p>
       </header>
 
-      <div className="mt-8 grid gap-4">
+      <div className="mt-12 grid gap-12">
         <Card label="Words read" index={0}>
           <ul className="divide-y divide-gold/10">
             {WORDS.map(({ word, skill }) => (
@@ -333,18 +329,13 @@ function Report({ session }: { session: Session }) {
   );
 }
 
-function Card({ label, index, children }: { label: string; index: number; children: ReactNode }) {
-  const reduceMotion = useReducedMotion();
+/** One part of the report: a plain heading and what happened. Read like a note, not a dashboard. */
+function Card({ label, children }: { label: string; index?: number; children: ReactNode }) {
   return (
-    <motion.section
-      className="rounded-[1.75rem] bg-night/70 p-6 shadow-[0_24px_60px_rgba(5,8,26,0.35)] ring-1 ring-gold/15 backdrop-blur-md sm:p-7"
-      initial={{ opacity: 0, y: reduceMotion ? 0 : 14 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: reduceMotion ? 0 : 0.5, delay: reduceMotion ? 0 : 0.08 * index, ease }}
-    >
-      <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-gold/85">{label}</h2>
+    <section>
+      <h2 className="text-xl font-semibold text-gold">{label}</h2>
       <div className="mt-4">{children}</div>
-    </motion.section>
+    </section>
   );
 }
 

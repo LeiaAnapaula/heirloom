@@ -12,6 +12,22 @@ const turnEase = [0.645, 0.045, 0.355, 1] as const;
  * The glowing book. Closed, it shows its cover and breathes gold light.
  * Open, it is a two-page spread; changing `turnKey` turns a page.
  */
+/**
+ * The spine: a soft valley of shadow down the middle of a spread. Pages draw it between their
+ * illustration and their interactive layer, so words and buttons are never shaded by the fold.
+ */
+export function Spine() {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-y-0 left-1/2 w-[9%] -translate-x-1/2"
+      style={{
+        background: "linear-gradient(90deg, transparent 0%, rgba(5,8,26,0.28) 38%, rgba(5,8,26,0.5) 50%, rgba(5,8,26,0.28) 62%, transparent 100%)",
+      }}
+    />
+  );
+}
+
 export default function Book({
   opened,
   glowing,
@@ -38,7 +54,7 @@ export default function Book({
   }, [opened, reduceMotion, coverAngle]);
 
   return (
-    <div className="relative [perspective:2600px]" style={{ width: "min(94vw, calc((100dvh - 88px) * 1.5))", aspectRatio: "3 / 2" }}>
+    <div className="relative [perspective:5200px]" style={{ width: "min(94vw, calc((100dvh - 88px) * 1.5))", aspectRatio: "3 / 2" }}>
       <motion.div
         className="absolute inset-0 [transform-style:preserve-3d]"
         initial={false}
@@ -86,15 +102,6 @@ export default function Book({
             </motion.div>
           </AnimatePresence>
 
-          {/* The spine: a soft valley of shadow down the middle. */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-y-0 left-1/2 w-[9%] -translate-x-1/2"
-            style={{
-              background:
-                "linear-gradient(90deg, transparent 0%, rgba(5,8,26,0.28) 38%, rgba(5,8,26,0.5) 50%, rgba(5,8,26,0.28) 62%, transparent 100%)",
-            }}
-          />
           <div aria-hidden className="pointer-events-none absolute inset-0 rounded-[1.6rem] ring-1 ring-inset ring-gold/15" />
         </motion.div>
 
@@ -136,7 +143,10 @@ function TurningLeaf({ turnKey }: { turnKey: string | number }) {
       >
         <div
           className="absolute inset-0 rounded-r-[1.6rem] [backface-visibility:hidden]"
-          style={{ background: "linear-gradient(90deg, #0f1638 0%, #1c2660 40%, #222d6b 100%)", boxShadow: "inset 12px 0 30px rgba(5,8,26,0.5)" }}
+          style={{
+            background: "linear-gradient(90deg, #0f1638 0%, #1c2660 40%, #222d6b 100%)",
+            boxShadow: "inset 12px 0 30px rgba(5,8,26,0.5), inset -1px 0 0 rgba(247,240,220,0.18)",
+          }}
         />
         <div
           className="absolute inset-0 rounded-l-[1.6rem] [backface-visibility:hidden] [transform:rotateY(180deg)]"

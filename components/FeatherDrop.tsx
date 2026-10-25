@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Feather, Rocket, StarSprite } from "./art/sprites";
 import type { FeatherInteraction, Line } from "@/lib/episode";
 import type { InteractionProps } from "@/lib/interaction";
+import { playSfx } from "@/lib/sfx";
 import { canListen, listenFor, stopListening, type ListenOutcome } from "@/lib/listen";
 
 // Where things sit, in % of the spread.
@@ -97,6 +98,7 @@ export default function FeatherDrop({ config, active, ctx }: InteractionProps<Fe
       const controller = new AbortController();
       abort.current = controller;
       setListening(true);
+      playSfx("listen");
       const heard = await listenFor(() => false, {
         timeoutMs: config.guessMs,
         signal: controller.signal,

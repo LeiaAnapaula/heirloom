@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import Book from "./Book";
 import EpisodeRunner from "./EpisodeRunner";
+import RotateHint from "./RotateHint";
 import Starfield from "./Starfield";
 import { getActiveProfile } from "@/lib/active-profile";
 import type { Episode } from "@/lib/episode";
@@ -44,6 +45,7 @@ export default function StoryLoader({ episode }: { episode: Episode }) {
   return (
     <main className="relative isolate flex h-dvh flex-col items-center justify-center gap-5 overflow-hidden">
       <Starfield />
+      <RotateHint />
       <Book opened={false} glowing turnKey="loading">
         {null}
       </Book>

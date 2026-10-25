@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import type { ReactNode } from "react";
 import type { Line } from "@/lib/episode";
+import { Spine } from "./Book";
 
 /**
  * One page of the book: the illustration fills the spread, the interaction sits
@@ -12,6 +13,7 @@ export default function Page({ art, caption, children }: { art: ReactNode; capti
   return (
     <div className="absolute inset-0">
       <div className="absolute inset-0">{art}</div>
+      <Spine />
       <div className="absolute inset-0">{children}</div>
       {caption && <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center px-[8%] pt-[4.5%]">{caption}</div>}
     </div>

@@ -10,7 +10,8 @@
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit",
     "audio": "tsx scripts/pregen-audio.ts",
-    "sfx": "node scripts/make-sfx.mjs"
+    "sfx": "node scripts/make-sfx.mjs",
+    "dev:ipad": "next dev --experimental-https -H 0.0.0.0"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",

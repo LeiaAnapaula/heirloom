@@ -4,6 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import type { Line, ReadAloudInteraction } from "@/lib/episode";
 import type { InteractionProps } from "@/lib/interaction";
+import { playSfx } from "@/lib/sfx";
 import { canListen, listenFor, matchesWord, stopListening } from "@/lib/listen";
 
 const LISTEN_MS = 5000; // quiet time before a gentle hint, by voice or by tap
@@ -112,6 +113,7 @@ export default function ReadAloud({ config, active, ctx }: InteractionProps<Read
         if (voice) {
           // The book has just spoken (and "home" ends its own sentence on the last page),
           // so give its voice a moment to fade before the microphone opens.
+          playSfx("listen"); // "your turn", softly; the settle below keeps it out of the microphone
           await wait(SETTLE_MS);
           if (!alive()) return;
           enter("listening");

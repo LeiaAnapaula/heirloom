@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { motion } from "framer-motion";
-import Book, { OPEN_MS, TURN_MS } from "./Book";
+import Book, { OPEN_MS, Spine, TURN_MS } from "./Book";
 import Page, { Caption } from "./Page";
 import Scene, { type Mood } from "./Scene";
+import RotateHint from "./RotateHint";
 import Starfield from "./Starfield";
 import { StarSprite } from "./art/sprites";
 import CountPlanets from "./CountPlanets";
@@ -17,6 +18,7 @@ import { allLines, resolveLine, withName, type Episode, type Line, type Screen }
 import type { InteractionContext } from "@/lib/interaction";
 import { MIA, type ChildProfile } from "@/lib/profile";
 import { finishSession, logAttempt, startSession } from "@/lib/session";
+import { playSfx, preloadSfx, sfxForEffect, unlockSfx } from "@/lib/sfx";
 import { play, preload, stop as stopVoice, unlockAudio } from "@/lib/voice";
 
 type Phase = "closed" | "glowing" | "opening" | "intro" | "interact" | "success" | "end";
@@ -101,6 +103,7 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
       setMood("idle");
       setCaption(null);
       setPhaseBoth("intro");
+      if (afterTurn) playSfx("page-turn");
       await wait(afterTurn ? TURN_MS : 250);
       if (gen.current !== g) return;
       await narrate(screens[i].narration);
@@ -118,6 +121,9 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
     setMood("celebrate");
     const started = Date.now();
     const { narration, effect } = screens[i].onSuccess;
+    playSfx("chime");
+    const sound = sfxForEffect(effect);
+    if (sound) playSfx(sound);
     await narrate(narration);
     await wait(Math.max(900, (effect ? CELEBRATION_MS[effect] : 0) - (Date.now() - started)));
     if (gen.current !== g) return;
@@ -155,6 +161,7 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
     await wait(1900);
     if (gen.current !== g) return;
     setPhaseBoth("opening");
+    playSfx("page-turn");
     await wait(OPEN_MS);
     if (gen.current !== g) return;
     runScreen(0, false);
@@ -163,6 +170,10 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
   // Opened from the title screen, the tap there already woke the narrator.
   // Opened directly (a reload, a shared link), the child taps the sleeping book first.
   const tapped = useSyncExternalStore(subscribeToTaps, hasBeenTapped, () => true);
+
+  useEffect(() => {
+    void preloadSfx();
+  }, []);
 
   useEffect(() => {
     if (!tapped) return;
@@ -192,6 +203,7 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
   return (
     <main className="relative isolate flex h-dvh flex-col items-center justify-center gap-5 overflow-hidden">
       <Starfield />
+      <RotateHint />
 
       <Link
         href="/"
@@ -219,7 +231,11 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
 
       {asleep && (
         // The tap itself wakes the book (see subscribeToTaps); unlocking audio has to happen inside it.
-        <button onClick={unlockAudio} className="absolute inset-0 z-10 flex items-end justify-center pb-[6dvh]" aria-label="Wake up the book">
+        <button
+          onClick={() => {
+            unlockAudio();
+            unlockSfx();
+          }} className="absolute inset-0 z-10 flex items-end justify-center pb-[6dvh]" aria-label="Wake up the book">
           <motion.span
             className="text-xl font-semibold text-moon/90"
             animate={{ opacity: [0.5, 1, 0.5] }}
@@ -253,6 +269,7 @@ function Interaction({ screen, active, ctx }: { screen: Screen; active: boolean;
 function EndPage({ title, onAgain }: { title: string; onAgain: () => void }) {
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 text-center">
+      <Spine />
       <StarSprite className="h-[22%]" />
       <p className="text-[clamp(2rem,5vw,4.5rem)] font-semibold text-gold">The End</p>
       <p className="text-[clamp(1rem,1.8vw,1.5rem)] font-medium text-mist">Next time: {title}</p>

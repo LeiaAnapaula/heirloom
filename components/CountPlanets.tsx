@@ -5,6 +5,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Planet, Rocket, type PlanetHue } from "./art/sprites";
 import type { CountInteraction } from "@/lib/episode";
 import type { InteractionProps } from "@/lib/interaction";
+import { playSfx } from "@/lib/sfx";
 import { canListen, listenFor, parseLastNumber, stopListening } from "@/lib/listen";
 import type { Attempt } from "@/lib/profile";
 
@@ -102,6 +103,7 @@ export default function CountPlanets({ config, active, ctx }: InteractionProps<C
 
         abort = new AbortController();
         setListening(true);
+        playSfx("listen");
         // Match only the right number, and only as the last number said: interim results
         // arrive mid-count ("one, two..."), so judging the first number heard would be unfair.
         // A finished phrase with another number is a wrong answer; the book counts together.
