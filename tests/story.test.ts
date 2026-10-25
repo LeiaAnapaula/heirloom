@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   STORY_SYSTEM_PROMPT,
   applyGenerated,
   buildOutline,
   buildStoryMessage,
+  getNarration,
   salvageGenerated,
   validateGenerated,
   type GeneratedScreens,
@@ -242,5 +243,19 @@ describe("applyGenerated", () => {
     const ep = applyGenerated(lostStar, { screens: [{ id: "wake", narration: ["Hello, Leo.", "Will you help me?"] }] });
     expect(ep.screens[0].narration.map((l) => l.id)).toEqual(["gen-wake-0", "gen-wake-1"]);
     expect(ep.screens[1]).toEqual(lostStar.screens[1]);
+  });
+});
+
+describe("getNarration", () => {
+  it("plays the written story when the server says there is no story key yet", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ story: "written", reason: "no-story-key" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const result = await getNarration(LEO, lostStar);
+      expect(result).toEqual({ episode: lostStar, source: "default", reason: "no-story-key" });
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

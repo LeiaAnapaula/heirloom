@@ -362,7 +362,9 @@ export async function getNarration(
       const code = typeof body === "object" && body !== null ? (body as { error?: unknown }).error : undefined;
       return fallback(typeof code === "string" ? code : `http-${res.status}`);
     }
-    const data = (await res.json()) as { screens?: unknown; fallback?: unknown };
+    const data = (await res.json()) as { screens?: unknown; fallback?: unknown; story?: unknown; reason?: unknown };
+    // The server can say "play the written story" (no story key yet) without it being an error.
+    if (data.story === "written") return fallback(typeof data.reason === "string" ? data.reason : "written");
     const outline = buildOutline(episode);
     const checked = salvageGenerated({ screens: data.screens }, outline, profile);
     if (!checked) return fallback("invalid");

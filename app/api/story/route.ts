@@ -260,7 +260,8 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return json({ error: "no-story-key" }, 503);
+  // No key is a normal setup (the written story plays), not a failure, so it is a quiet 200.
+  if (!apiKey) return json({ story: "written", reason: "no-story-key" }, 200);
   if (!inflight.has(key) && overLimit(`story|${caller(request)}`, NEW_STORIES_PER_HOUR, 60 * 60 * 1000)) {
     return json({ error: "story-busy" }, 429);
   }
