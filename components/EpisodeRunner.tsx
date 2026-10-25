@@ -8,6 +8,7 @@ import Page, { Caption } from "./Page";
 import Scene, { type Mood } from "./Scene";
 import Starfield from "./Starfield";
 import { StarSprite } from "./art/sprites";
+import MagicPencil from "./MagicPencil";
 import ReadAloud from "./ReadAloud";
 import YesButton from "./YesButton";
 import { allLines, resolveLine, withName, type Episode, type Line, type Screen } from "@/lib/episode";
@@ -234,12 +235,14 @@ function Interaction({ screen, active, ctx, onNext }: { screen: Screen; active: 
       return <YesButton config={i} active={active} ctx={ctx} />;
     case "readAloud":
       return <ReadAloud config={i} active={active} ctx={ctx} />;
+    case "trace":
+      return <MagicPencil config={i} active={active} ctx={ctx} />;
     default:
       return active ? <NextStandIn onNext={onNext} /> : null;
   }
 }
 
-/** M2 stand-in for interactions that arrive in M5 and M6. */
+/** M2 stand-in for interactions that arrive in M6. */
 function NextStandIn({ onNext }: { onNext: () => void }) {
   return (
     <div className="absolute inset-x-0 bottom-[9%] flex justify-center">
