@@ -1,4 +1,5 @@
 import Link from "next/link";
+import OpenBookButton from "@/components/OpenBookButton";
 import Starfield from "@/components/Starfield";
 
 export default function TitleScreen() {
@@ -13,12 +14,7 @@ export default function TitleScreen() {
       </h1>
       <p className="mt-4 text-xl font-medium text-mist sm:text-2xl">Mia and the Lost Star</p>
 
-      <Link
-        href="/episode/lost-star"
-        className="glow-button mt-14 rounded-full px-12 py-5 text-2xl font-bold sm:text-3xl"
-      >
-        Open the book
-      </Link>
+      <OpenBookButton href="/episode/lost-star" />
 
       <Link
         href="/parent"

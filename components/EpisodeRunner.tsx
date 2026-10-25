@@ -1,24 +1,41 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { motion } from "framer-motion";
 import Book, { OPEN_MS, TURN_MS } from "./Book";
 import Page, { Caption } from "./Page";
 import Scene, { type Mood } from "./Scene";
 import Starfield from "./Starfield";
 import { StarSprite } from "./art/sprites";
-import { resolveLine, withName, type Episode, type Line } from "@/lib/episode";
+import { allLines, resolveLine, withName, type Episode, type Line, type Screen } from "@/lib/episode";
 import { MIA, type ChildProfile } from "@/lib/profile";
+import { play, preload, stop as stopVoice, unlockAudio } from "@/lib/voice";
 
 type Phase = "closed" | "glowing" | "opening" | "intro" | "interact" | "success" | "end";
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-// Stand-in for the narrator voice until M3: hold each line long enough to read it.
-async function speak(line: Line) {
-  const words = (line.say ?? line.text).split(/\s+/).length;
-  await wait(700 + words * 330);
+/** Every line a screen might speak, so its audio can be warmed before the page turns. */
+function screenLines(episode: Episode, screen: Screen | undefined, name: string): Line[] {
+  return screen ? allLines({ ...episode, screens: [screen] }).map((l) => resolveLine(l, name)) : [];
+}
+
+/**
+ * Has this page had a tap or key press yet? Browsers won't speak before one. Read from the
+ * browser as an external store so the sleeping-book gate appears without an extra render pass.
+ */
+function subscribeToTaps(onChange: () => void) {
+  window.addEventListener("pointerdown", onChange, true);
+  window.addEventListener("keydown", onChange, true);
+  return () => {
+    window.removeEventListener("pointerdown", onChange, true);
+    window.removeEventListener("keydown", onChange, true);
+  };
+}
+function hasBeenTapped(): boolean {
+  const ua = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation;
+  return ua ? ua.hasBeenActive : true;
 }
 
 export default function EpisodeRunner({ episode, profile = MIA }: { episode: Episode; profile?: ChildProfile }) {
@@ -47,9 +64,10 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
         if (gen.current !== g) return;
         const line = resolveLine(raw, profile.name);
         setCaption(line);
-        setWordIndex(-1);
-        await speak(line);
+        setWordIndex(0);
+        await play(line, { onWord: (i) => gen.current === g && setWordIndex(i) });
       }
+      if (gen.current === g) setWordIndex(-1);
     },
     [profile.name],
   );
@@ -57,6 +75,8 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
   const runScreen = useCallback(
     async (i: number, afterTurn: boolean) => {
       const g = ++gen.current;
+      stopVoice();
+      preload(screenLines(episode, screens[i + 1], profile.name));
       setIndex(i);
       setMood("idle");
       setCaption(null);
@@ -67,7 +87,7 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
       if (gen.current !== g) return;
       setPhaseBoth("interact");
     },
-    [narrate, screens],
+    [episode, narrate, profile.name, screens],
   );
 
   const succeed = useCallback(async () => {
@@ -89,34 +109,45 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
   }, [index, narrate, runScreen, screens]);
 
   // The book wakes up: it sits closed, glows, then opens on its own.
-  useEffect(() => {
+  const wake = useCallback(async () => {
     const g = ++gen.current;
-    (async () => {
-      await wait(500);
-      if (gen.current !== g) return;
-      setPhaseBoth("glowing");
-      await wait(1900);
-      if (gen.current !== g) return;
-      setPhaseBoth("opening");
-      await wait(OPEN_MS);
-      if (gen.current !== g) return;
-      runScreen(0, false);
-    })();
+    preload(screenLines(episode, screens[0], profile.name));
+    await wait(500);
+    if (gen.current !== g) return;
+    setPhaseBoth("glowing");
+    await wait(1900);
+    if (gen.current !== g) return;
+    setPhaseBoth("opening");
+    await wait(OPEN_MS);
+    if (gen.current !== g) return;
+    runScreen(0, false);
+  }, [episode, profile.name, runScreen, screens]);
+
+  // Opened from the title screen, the tap there already woke the narrator.
+  // Opened directly (a reload, a shared link), the child taps the sleeping book first.
+  const tapped = useSyncExternalStore(subscribeToTaps, hasBeenTapped, () => true);
+
+  useEffect(() => {
+    if (!tapped) return;
+    wake();
     return () => {
       // gen is a counter, not a DOM node: bumping it is exactly how we cancel.
       // eslint-disable-next-line react-hooks/exhaustive-deps
       gen.current++;
+      stopVoice();
     };
-  }, [runScreen]);
+  }, [tapped, wake]);
 
   const restart = () => {
     gen.current++;
+    stopVoice();
     setIndex(0);
     setCaption(null);
     setMood("idle");
     runScreen(0, true);
   };
 
+  const asleep = !tapped && phase === "closed";
   const opened = phase !== "closed" && phase !== "glowing";
   const ended = phase === "end";
 
@@ -134,7 +165,7 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
         </svg>
       </Link>
 
-      <Book opened={opened} glowing={phase === "glowing"} turnKey={ended ? "end" : index}>
+      <Book opened={opened} glowing={phase === "glowing" || asleep} turnKey={ended ? "end" : index}>
         {ended ? (
           <EndPage title={withName(episode.next.title, profile.name)} onAgain={restart} />
         ) : (
@@ -145,6 +176,19 @@ export default function EpisodeRunner({ episode, profile = MIA }: { episode: Epi
       </Book>
 
       <Progress count={screens.length} index={ended ? screens.length : index} visible={opened} />
+
+      {asleep && (
+        // The tap itself wakes the book (see subscribeToTaps); unlocking audio has to happen inside it.
+        <button onClick={unlockAudio} className="absolute inset-0 z-10 flex items-end justify-center pb-[6dvh]" aria-label="Wake up the book">
+          <motion.span
+            className="text-xl font-semibold text-moon/90"
+            animate={{ opacity: [0.5, 1, 0.5] }}
+            transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+          >
+            Tap the book to wake it up
+          </motion.span>
+        </button>
+      )}
     </main>
   );
 }

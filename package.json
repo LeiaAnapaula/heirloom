@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit",
-    "audio": "node scripts/pregen-audio.mjs"
+    "audio": "tsx scripts/pregen-audio.ts",
+    "sfx": "node scripts/make-sfx.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",
@@ -26,6 +27,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^5.0.5"
   }
