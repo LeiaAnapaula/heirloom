@@ -3,13 +3,17 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Planet, Rocket, type PlanetHue } from "./art/sprites";
+import { Spine } from "./Book";
 import type { CountInteraction } from "@/lib/episode";
 import type { InteractionProps } from "@/lib/interaction";
 import { playSfx } from "@/lib/sfx";
-import { canListen, listenFor, parseLastNumber, stopListening } from "@/lib/listen";
+import { canListen, listenFor, normalizeSpeech, parseLastNumber, stopListening, type ListenOutcome } from "@/lib/listen";
 import type { Attempt } from "@/lib/profile";
 
 const LISTEN_MS = 6000;
+// A child counting out loud may pause for breath, and the recognizer can close the phrase there.
+// If she is partway through a count from one, keep listening while at least this much time is left.
+const MORE_MS = 1500;
 const SETTLE_MS = 300; // let the book's own voice fade before listening
 // With no microphone the buttons carry the page. If no tap comes, the book counts with the child anyway.
 const TAP_ONLY_MS = 8000;
@@ -60,36 +64,69 @@ export default function CountPlanets({ config, active, ctx }: InteractionProps<C
 
   // A living 3D world for this page, built and verified by Gemini 4 Argon (scripts/build-world.mts).
   // Used only when it was verified for this lesson's number; otherwise the drawn planets stay.
+  // The drawn planets stay until the world has proved it works (its planets answer), so a slow
+  // or offline network never leaves a counting question over an empty page. A world that is not
+  // working by the time the planets start to light is dropped for this visit, so the planets
+  // never swap while the child is counting.
   const [world, setWorld] = useState<string | null>(null);
-  const [worldReady, setWorldReady] = useState(false);
+  const [worldLive, setWorldLive] = useState(false);
   const frame = useRef<HTMLIFrameElement>(null);
   const added = useRef(first);
+  const settled = useRef(first); // planets that have all been lit together; any after them are still arriving
   useEffect(() => {
-    let live = true;
+    let on = true;
+    let poll: ReturnType<typeof setInterval> | undefined;
+    const giveUp = setTimeout(() => {
+      stop();
+      setWorld(null);
+    }, INTRO_START_MS);
+    function stop() {
+      on = false;
+      clearInterval(poll);
+      clearTimeout(giveUp);
+    }
     fetch("/worlds/current.json", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((j: { planets?: number; path?: string } | null) => {
-        if (live && j?.path && j.planets === first) setWorld(j.path);
+        if (!on) return;
+        if (!j?.path || j.planets !== first) return stop();
+        setWorld(j.path);
+        poll = setInterval(() => {
+          const w = worldApi(frame.current);
+          try {
+            if (!w || w.planets().length !== first) return;
+            w.highlight(0, false);
+          } catch {
+            return;
+          }
+          stop();
+          setWorldLive(true);
+        }, 150);
       })
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
+      .catch(stop);
+    return stop;
   }, [first]);
   useEffect(() => {
-    type World = { highlight(i: number, on: boolean): void; addPlanet(): void };
-    const w = (frame.current?.contentWindow as (Window & { __world?: World }) | null)?.__world;
-    if (!worldReady || !w) return;
+    const w = worldApi(frame.current);
+    if (!worldLive || !w) return;
     try {
       while (added.current < shown) {
         w.addPlanet();
         added.current++;
       }
-      for (let i = 0; i < shown; i++) w.highlight(i, i < lit);
+      // Count left to right on screen, as the drawn page does, whatever order the world keeps them in.
+      // A planet that just arrived comes last and stays dark until it lights on its own, as on the
+      // drawn page, where a new planet always joins on the right.
+      const xs = w.planets().map((p) => p.x);
+      const byX = (a: number, b: number) => (xs[a] ?? 0) - (xs[b] ?? 0);
+      const ids = Array.from({ length: shown }, (_, i) => i);
+      const order = [...ids.slice(0, settled.current).sort(byX), ...ids.slice(settled.current).sort(byX)];
+      order.forEach((i, k) => w.highlight(i, k < lit));
+      if (lit >= shown) settled.current = shown;
     } catch {
       // the world is decoration; counting still works without it
     }
-  }, [worldReady, lit, shown]);
+  }, [worldLive, lit, shown]);
 
   // While the question is read, the first planets light up one at a time.
   useEffect(() => {
@@ -142,11 +179,25 @@ export default function CountPlanets({ config, active, ctx }: InteractionProps<C
         // Match only the right number, and only as the last number said: interim results
         // arrive mid-count ("one, two..."), so judging the first number heard would be unfair.
         // A finished phrase with another number is a wrong answer; the book counts together.
+        // But a phrase that stops partway through a count from one ("one, two...") is a breath,
+        // not an answer: listen on for the rest of the window and judge the whole count.
         // The short wait lets the narrator's question and the ding fade before the microphone opens.
-        const hear = async () => {
+        const hear = async (): Promise<ListenOutcome> => {
           await new Promise((r) => setTimeout(r, SETTLE_MS));
-          if (settled || cancelled) return { status: "silence" } as const;
-          return listenFor((h) => parseLastNumber(h) === expected, { timeoutMs: LISTEN_MS, signal });
+          const until = performance.now() + LISTEN_MS;
+          let before = "";
+          for (;;) {
+            if (settled || cancelled) return { status: "silence" };
+            const sofar = before;
+            const timeoutMs = sofar ? until - performance.now() : LISTEN_MS;
+            const heard = await listenFor((h) => parseLastNumber(`${sofar} ${h}`) === expected, { timeoutMs, signal });
+            if (heard.status === "match" || heard.status === "unavailable") return heard;
+            if (heard.status === "silence") return sofar ? { status: "nomatch", heard: sofar } : heard;
+            const all = `${sofar} ${heard.heard}`.trim();
+            const at = countedTo(all);
+            if (at < 1 || at >= expected || until - performance.now() < MORE_MS) return { status: "nomatch", heard: all };
+            before = all;
+          }
         };
         void hear().then((heard) => {
           if (heard.status === "match") return settle({ n: expected, mode: "voice" });
@@ -217,7 +268,8 @@ export default function CountPlanets({ config, active, ctx }: InteractionProps<C
         ctx.log({ skill: step.skill, correct, hintsUsed: hints, ms: Math.round(performance.now() - askedAt), mode });
 
         const next = config.steps[s + 1];
-        if (!next) return ctx.succeed(); // the runner says the last line
+        if (!next) return ctx.succeed(); // the runner says the last line (and chimes)
+        playSfx("chime");
         await ctx.narrate(step.correct);
         if (!live()) return;
 
@@ -229,6 +281,7 @@ export default function CountPlanets({ config, active, ctx }: InteractionProps<C
           if (!live()) return;
           setLit(more);
           setArrived(more - 1);
+          playSfx("sparkle");
           await sleep(reduce ? 300 : 1000);
           if (!live()) return;
         }
@@ -257,18 +310,25 @@ export default function CountPlanets({ config, active, ctx }: InteractionProps<C
 
   return (
     <div className="@container absolute inset-0">
+      {world && (
+        // The world is opaque, so it brings the book's fold with it. It stays invisible until it works.
+        <div className={`absolute inset-0 transition-opacity duration-300 ${worldLive ? "opacity-100" : "opacity-0"}`}>
+          <iframe
+            ref={frame}
+            src={world}
+            title={`${shown} planets`}
+            className="pointer-events-none absolute inset-0 h-full w-full border-0"
+          />
+          <Spine />
+        </div>
+      )}
       <Flyby reduce={reduce} />
 
-      {world && (
-        <iframe
-          ref={frame}
-          src={world}
-          title={`${shown} planets`}
-          onLoad={() => setWorldReady(true)}
-          className="pointer-events-none absolute inset-0 h-full w-full border-0"
-        />
-      )}
-      <div role="img" aria-label={`${shown} planets`} className={`absolute inset-0 ${world ? "hidden" : ""}`}>
+      <div
+        role="img"
+        aria-label={`${shown} planets`}
+        className={`absolute inset-0 transition-[opacity,visibility] duration-300 ${worldLive ? "invisible opacity-0" : ""}`}
+      >
         {SLOTS.slice(0, shown).map((slot, i) => (
           <PlanetSlot
             key={slot.hue}
@@ -286,6 +346,37 @@ export default function CountPlanets({ config, active, ctx }: InteractionProps<C
       <NumberRow max={config.max} turn={turn} listening={listening} flash={flash} countAt={countAt} onTap={tap} reduce={reduce} />
     </div>
   );
+}
+
+type World = {
+  planets(): { x: number; y: number; r: number }[]; // on-screen centers, as fractions of the frame
+  highlight(i: number, on: boolean): void;
+  addPlanet(): void;
+};
+
+/** The 3D world's controls, or null while it has not loaded (or cannot be reached). */
+function worldApi(f: HTMLIFrameElement | null): World | null {
+  try {
+    return (f?.contentWindow as (Window & { __world?: World }) | null)?.__world ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * How far a phrase counts up from one: "one, two, three" is 3, "1 2" is 2. Zero when it is
+ * not a count from one ("three", "two four"). Soundalikes count as their number ("one to
+ * three" is 3); words that are not numbers ("um", "and") are skipped.
+ */
+function countedTo(heard: string): number {
+  let at = 0;
+  for (const word of normalizeSpeech(heard).match(/\d+|[a-z]+/g) ?? []) {
+    const n = parseLastNumber(word);
+    if (n === null) continue;
+    if (n !== at + 1) return 0;
+    at = n;
+  }
+  return at;
 }
 
 /** A small rocket glides past above the planets while the question is read. */

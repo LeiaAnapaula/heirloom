@@ -224,9 +224,10 @@ function StarHomeStage({ mood }: { mood: Mood }) {
     <div aria-hidden className="pointer-events-none absolute inset-0">
       <Hands glow={!go} reduce={reduce} />
 
-      {/* The star, held. It breathes; on celebrate it rises to its place in the sky. */}
+      {/* The star, held. It breathes; on celebrate it rises to its place in the sky, in front of
+          the page's words (the art sits under them), so it never passes behind the word it was sent with. */}
       <motion.div
-        style={boxAround(STAR_HELD.x, STAR_HELD.y, STAR_HELD.h)}
+        style={{ ...boxAround(STAR_HELD.x, STAR_HELD.y, STAR_HELD.h), zIndex: 1 }}
         animate={
           !go
             ? { y: "0%", scale: 1, opacity: 1 }

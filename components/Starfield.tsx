@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 
 type Star = {
   x: number; // 0..1 of width
@@ -36,13 +36,22 @@ function seededStars(count: number): Star[] {
 }
 
 /**
+ * drawSky's gradient written as CSS (fitted to it, since CSS can't draw a two-circle gradient), painted
+ * behind the canvas. The first paint, before any script runs, is then already the sky, not flat ink.
+ */
+const SKY_CSS =
+  "radial-gradient(153vh 196vh at 50% 115%, #3b3478 5.6%, #1e2a5e 35.1%, #121a40 68.7%, #0a0f2a 89.8%)";
+
+/**
  * A slow, living night sky. Stars twinkle and drift a little; once in a while
  * a shooting star crosses. Respects reduced motion by holding still.
  */
 export default function Starfield({ density = 1 }: { density?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  useEffect(() => {
+  // A layout effect paints before the browser shows the canvas, so a sky that mounts mid-scene
+  // (the book's pages swap trees as it wakes) is never blank for a frame.
+  useLayoutEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -53,7 +62,9 @@ export default function Starfield({ density = 1 }: { density?: number }) {
     let height = 0;
     let stars: Star[] = [];
     let shooter: Shooter | null = null;
-    let nextShooterAt = 6000;
+    // The first shooting star comes a while after this sky appears. Timed from page load instead,
+    // every sky mounted later would launch one at once, and as the book wakes it would jump.
+    let nextShooterAt = performance.now() + 6000;
     let raf = 0;
 
     const resize = () => {
@@ -133,8 +144,7 @@ export default function Starfield({ density = 1 }: { density?: number }) {
     };
 
     resize();
-    if (reduceMotion) frame(0);
-    else raf = requestAnimationFrame(frame);
+    frame(reduceMotion ? 0 : performance.now()); // paints now; frame() asks for the next one
 
     const onResize = () => {
       resize();
@@ -147,5 +157,12 @@ export default function Starfield({ density = 1 }: { density?: number }) {
     };
   }, [density]);
 
-  return <canvas ref={canvasRef} aria-hidden className="pointer-events-none fixed inset-0 -z-10 h-full w-full" />;
+  return (
+    <canvas
+      ref={canvasRef}
+      aria-hidden
+      className="pointer-events-none fixed inset-0 -z-10 h-full w-full"
+      style={{ background: SKY_CSS }}
+    />
+  );
 }

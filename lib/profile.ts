@@ -35,6 +35,9 @@ export type Attempt = {
   note?: string; // e.g. the child's guess on the gravity page, as text
 };
 
+/** The longest answer time an account keeps for one attempt (10 minutes). */
+export const MAX_ATTEMPT_MS = 600_000;
+
 /**
  * Mia is made up. Starting scores reflect the demo script:
  * knows most letter sounds and reads short words, just starting letters, counts to 10.

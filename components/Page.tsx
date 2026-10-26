@@ -15,7 +15,8 @@ export default function Page({ art, caption, children }: { art: ReactNode; capti
       <div className="absolute inset-0">{art}</div>
       <Spine />
       <div className="absolute inset-0">{children}</div>
-      {caption && <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center px-[8%] pt-[4.5%]">{caption}</div>}
+      {/* Above the art, so a star that rises in front of the words never sits on top of the narration. */}
+      {caption && <div className="pointer-events-none absolute inset-x-0 top-0 z-[2] flex justify-center px-[8%] pt-[4.5%]">{caption}</div>}
     </div>
   );
 }
@@ -34,8 +35,9 @@ export function Caption({ line, wordIndex = -1 }: { line: Line | null; wordIndex
           aria-live="polite"
           className="max-w-[34ch] text-center [text-wrap:balance] text-[clamp(1.25rem,2.7vw,2.4rem)] font-semibold leading-snug text-moon [text-shadow:0_2px_18px_rgba(10,15,42,0.85)]"
           initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0, transition: { duration: 0.35 } }}
-          exit={{ opacity: 0, y: -6, transition: { duration: 0.2 } }}
+          // Quick swaps: the narrator starts each line at once, so its caption must be readable within about 0.2 s.
+          animate={{ opacity: 1, y: 0, transition: { duration: 0.15 } }}
+          exit={{ opacity: 0, y: -6, transition: { duration: 0.1 } }}
         >
           {words.map((w, i) => (
             <span

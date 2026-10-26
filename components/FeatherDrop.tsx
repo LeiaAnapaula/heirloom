@@ -165,6 +165,8 @@ export default function FeatherDrop({ config, active, ctx }: InteractionProps<Fe
     setListening(false);
     setReady(false);
     setStage("falling");
+    // A soft sparkle answers the tap. Then the fall itself is silent: on the Moon there is no air to carry a sound.
+    playSfx("sparkle", { volume: 0.3 });
 
     if (reduce) {
       const out = animate(opacity, 0, { duration: 0.25 });
@@ -185,10 +187,12 @@ export default function FeatherDrop({ config, active, ctx }: InteractionProps<Fe
     if (!reduce) running.current.push(animate(tilt, LIE_DOWN, { duration: 1.6, delay: 0.15, ease: freeFall }));
 
     await speaking.current; // let any line already being read finish first
-    await sleep(reduce ? 300 : 1100);
     if (!ctx.alive()) return;
     const note = guess.current || tidy(interim.current);
     ctx.log({ skill: config.skill, correct: true, hintsUsed: hints.current, ms, mode: note ? "voice" : "tap", note });
+    // The chime and "The Moon pulls gently" come as the quill touches down, while it tips over,
+    // so the child hears why it fell so slowly at the moment it lands.
+    ctx.cheer();
     ctx.succeed();
   };
 
@@ -217,7 +221,7 @@ export default function FeatherDrop({ config, active, ctx }: InteractionProps<Fe
         style={{ left: `${HOVER.x}%`, top: `${HOVER.y}%`, height: `${FEATHER_H}%`, aspectRatio: "40 / 120" }}
       >
         <motion.div className="absolute inset-0" style={{ y: yPct, opacity }}>
-          <Halo ready={ready} faded={stage !== "hover"} reduce={reduce} />
+          <Halo ready={ready} faded={stage !== "hover"} gone={stage === "landed"} reduce={reduce} />
           <motion.div className="absolute inset-0" style={{ rotate: tilt, transformOrigin: `50% ${TIP * 100}%` }}>
             <Feather className="h-full w-full drop-shadow-[0_0_10px_rgba(247,240,220,0.45)]" />
           </motion.div>
@@ -253,8 +257,11 @@ export default function FeatherDrop({ config, active, ctx }: InteractionProps<Fe
   );
 }
 
-/** Soft moonlight around the hovering feather; a gold pulse once it is time to tap. */
-function Halo({ ready, faded, reduce }: { ready: boolean; faded: boolean; reduce: boolean }) {
+/**
+ * Soft moonlight around the hovering feather; a gold pulse once it is time to tap. It dims as the
+ * feather falls and goes out when it lands, since the feather then tips over out of its circle.
+ */
+function Halo({ ready, faded, gone, reduce }: { ready: boolean; faded: boolean; gone: boolean; reduce: boolean }) {
   // A circle 1.2 feathers wide: the box is a third as wide as it is tall, hence 360%.
   const circle = "pointer-events-none absolute left-1/2 top-1/2 h-[120%] w-[360%] -translate-x-1/2 -translate-y-1/2 rounded-full";
   return (
@@ -268,7 +275,7 @@ function Halo({ ready, faded, reduce }: { ready: boolean; faded: boolean; reduce
             ? "radial-gradient(closest-side, rgba(255,227,163,0.55), rgba(245,201,105,0.18) 60%, rgba(245,201,105,0) 100%)"
             : "radial-gradient(closest-side, rgba(247,240,220,0.32), rgba(247,240,220,0.08) 60%, rgba(247,240,220,0) 100%)",
         }}
-        animate={{ opacity: faded ? 0.35 : reduce ? 0.85 : [0.55, 0.95, 0.55] }}
+        animate={{ opacity: gone ? 0 : faded ? 0.35 : reduce ? 0.85 : [0.55, 0.95, 0.55] }}
         transition={faded || reduce ? { duration: 0.6 } : { duration: ready ? 1.6 : 4.4, repeat: Infinity, ease: "easeInOut" }}
       />
       {ready && (

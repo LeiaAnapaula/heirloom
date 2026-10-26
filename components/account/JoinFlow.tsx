@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { addChild, fetchAccount, signUp } from "@/lib/account-client";
 import { CONSENT_TEXT, CONSENT_VERSION, cleanEmail, passwordProblem } from "@/lib/account-types";
 import { setActiveProfile } from "@/lib/active-profile";
@@ -26,6 +26,16 @@ export default function JoinFlow() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [childName, setChildName] = useState("");
+  const heading = useRef<HTMLHeadingElement>(null);
+  const shownStep = useRef<Step>("loading");
+
+  // A new step removes the button that was just pressed. Move focus to the new step's heading,
+  // so keyboard and screen-reader users hear where they are. Not when the page first opens.
+  // Each heading's `outline-none!` beats the global gold ring, which is for things a finger can press.
+  useEffect(() => {
+    if (step !== "loading" && shownStep.current !== "loading") heading.current?.focus();
+    shownStep.current = step;
+  }, [step]);
 
   useEffect(() => {
     let live = true;
@@ -71,7 +81,9 @@ export default function JoinFlow() {
 
       {step === "parent" && (
         <>
-          <h1 className="text-4xl font-semibold text-moon">Make a grown-up account</h1>
+          <h1 ref={heading} tabIndex={-1} className="text-4xl font-semibold text-moon outline-none!">
+            Make a grown-up account
+          </h1>
           <p className="mt-3 text-lg text-mist">So the book remembers what your child has learned, on any device you sign in on.</p>
           <form onSubmit={createAccount} className="mt-10 space-y-6" noValidate>
             <Field label="Your email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -113,7 +125,9 @@ export default function JoinFlow() {
 
       {step === "child" && (
         <>
-          <h1 className="text-4xl font-semibold text-moon">Who is reading?</h1>
+          <h1 ref={heading} tabIndex={-1} className="text-4xl font-semibold text-moon outline-none!">
+            Who is reading?
+          </h1>
           <p className="mt-3 text-lg text-mist">The book calls your child by name and tells stories about what they love.</p>
           <div className="mt-10">
             <ChildForm
@@ -133,7 +147,9 @@ export default function JoinFlow() {
 
       {step === "done" && (
         <div className="text-center">
-          <h1 className="text-4xl font-semibold text-moon">All set</h1>
+          <h1 ref={heading} tabIndex={-1} className="text-4xl font-semibold text-moon outline-none!">
+            All set
+          </h1>
           <p className="mt-3 text-lg text-mist">The book is ready for {childName}.</p>
           <div className="mt-10 space-y-4">
             <PrimaryButton type="button" onClick={() => router.push("/")}>

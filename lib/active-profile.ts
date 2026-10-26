@@ -25,6 +25,11 @@ export function setActiveProfile(id: string): void {
   window.dispatchEvent(new Event(EVENT));
 }
 
+/** A child was renamed or removed: anything showing a reader or their story asks again. */
+export function notifyReaderChanged(): void {
+  window.dispatchEvent(new Event(EVENT));
+}
+
 /** For useSyncExternalStore: hear about changes from this tab and others. */
 export function subscribeActiveProfile(onChange: () => void): () => void {
   window.addEventListener(EVENT, onChange);

@@ -3,13 +3,16 @@
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import FamilyPanel from "./account/FamilyPanel";
-import { Suspense, use, useEffect, useEffectEvent, useLayoutEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Suspense, use, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { browser } from "react-dom";
 import { StarSprite } from "./art/sprites";
 import { lostStar } from "@/content/episodes/lost-star";
+import { fetchAccount } from "@/lib/account-client";
+import type { AccountChild, AccountView } from "@/lib/account-types";
+import { subscribeActiveProfile } from "@/lib/active-profile";
 import { planNext } from "@/lib/adapt";
 import { withName, type CountInteraction, type FeatherInteraction } from "@/lib/episode";
-import { SKILL_IDS, type Attempt, type SkillId } from "@/lib/profile";
+import { DEMO_PROFILES, MAX_ATTEMPT_MS, SKILL_IDS, type Attempt, type SkillId } from "@/lib/profile";
 import { clearSession, loadSession, subscribe, type LoggedAttempt, type Session } from "@/lib/session";
 import { MASTERY, isMastered, lastAttempt } from "@/lib/skills";
 
@@ -35,7 +38,8 @@ const SKILL_LABELS: Record<SkillId, string> = {
 
 /**
  * The grown-up corner. A quick sum keeps little readers out, then a calm summary of
- * today's reading from this device and what tomorrow's story will practice.
+ * the latest reading (from this device, or from the family's account when signed in)
+ * and what tomorrow's story will practice.
  */
 export default function ParentSummary() {
   return (
@@ -50,6 +54,8 @@ function GrownUpCorner() {
   // renders there. The static page ships the night sky and an empty fallback.
   use(browser("The parent check and today's results live in this browser."));
   const [unlocked, setUnlocked] = useState(false);
+  // Asked for while the parent check is showing, so the results are ready the moment it opens.
+  const account = useAccount();
   const reduceMotion = useReducedMotion();
   // Leaving the page locks it again: Next keeps visited pages alive, and a child must not
   // find the grown-up page already open the next time someone taps "For grown-ups".
@@ -60,7 +66,7 @@ function GrownUpCorner() {
     <AnimatePresence mode="wait" initial={false}>
       {unlocked ? (
         <motion.div key="summary" initial={{ opacity: 0 }} animate={{ opacity: 1, transition: fade }}>
-          <Summary />
+          <Summary account={account} />
           <FamilyPanel />
         </motion.div>
       ) : (
@@ -75,6 +81,33 @@ function GrownUpCorner() {
       )}
     </AnimatePresence>
   );
+}
+
+/**
+ * The signed-in family, or null for a guest; undefined until the first answer. Asked again when
+ * this device's reader or session changes, which signing out and deleting the account both do.
+ */
+function useAccount(): AccountView | null | undefined {
+  const [account, setAccount] = useState<AccountView | null | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    let asked = 0;
+    const ask = () => {
+      const n = ++asked;
+      void fetchAccount().then((a) => live && n === asked && setAccount(a));
+    };
+    ask();
+    const offSession = subscribe(ask);
+    const offReader = subscribeActiveProfile(ask);
+    return () => {
+      live = false;
+      offSession();
+      offReader();
+    };
+  }, []);
+  // Next keeps visited pages alive: forget the family on the way out, so a return never shows an old one.
+  useLayoutEffect(() => () => setAccount(undefined), []);
+  return account;
 }
 
 /* ------------------------------------------------------------------ */
@@ -144,8 +177,11 @@ function ParentGate({ onPass }: { onPass: () => void }) {
     return () => window.removeEventListener("keydown", listener);
   }, []);
 
+  // Screens under 820 px tall (a 768 px iPad, or Safari with its toolbar showing) get smaller keys and
+  // padding, so the whole pad fits on one screen. A full-screen iPad Air (820) keeps the roomy layout,
+  // and narrow screens keep the tall top so the star stays clear of Back.
   return (
-    <section className="mx-auto flex min-h-dvh w-full max-w-[25rem] flex-col items-center justify-center pb-12 pt-24 text-center">
+    <section className="mx-auto flex min-h-dvh w-full max-w-[25rem] flex-col items-center justify-center pb-12 pt-24 text-center [@media(max-height:819px)]:pb-6 sm:[@media(max-height:819px)]:pt-12">
       <div className="absolute left-[max(0.5rem,env(safe-area-inset-left))] top-[max(0.5rem,env(safe-area-inset-top))]">
         <BackToBook quiet />
       </div>
@@ -202,7 +238,7 @@ function PadKey({ children, onPress, wide, quiet }: { children: ReactNode; onPre
     <button
       type="button"
       onClick={onPress}
-      className={`h-[76px] rounded-[1.4rem] ring-1 transition-[background-color,transform] duration-150 motion-safe:active:scale-[0.96] ${
+      className={`h-[76px] rounded-[1.4rem] ring-1 [@media(max-height:819px)]:h-14 transition-[background-color,transform] duration-150 motion-safe:active:scale-[0.96] ${
         quiet
           ? "bg-ink/40 text-xl font-semibold text-mist ring-mist/25 hover:bg-dusk/60"
           : "bg-dusk/60 text-3xl font-semibold tabular-nums text-moon ring-gold/25 hover:bg-dusk active:bg-gold/20"
@@ -217,17 +253,102 @@ function PadKey({ children, onPress, wide, quiet }: { children: ReactNode; onPre
 /* The summary                                                         */
 /* ------------------------------------------------------------------ */
 
-function Summary() {
-  const session = useSyncExternalStore(subscribe, loadSession, () => null);
-  if (!session || session.attempts.length === 0) return <EmptyState />;
-  return <Report session={session} />;
+function Summary({ account }: { account: AccountView | null | undefined }) {
+  const device = useSyncExternalStore(subscribe, loadSession, () => null);
+  const ready = account !== undefined;
+  // The button that opened this page is gone, so move focus to the heading: keyboard and
+  // screen-reader users then start at the top of the results, not at the page body. The heading's
+  // `outline-none!` beats the global gold ring, which is for things a finger can press.
+  const heading = useRef<HTMLElement | null>(null);
+  const setHeading = (el: HTMLElement | null) => {
+    heading.current = el;
+  };
+  // Clearing today's results swaps the report under the button that was pressed, so focus follows
+  // the new heading then too.
+  const story = ready ? pickStory(device, account) : null;
+  const shown = story ? `${story.onDevice}:${story.session.profile.id}:${story.session.startedAt}` : "none";
+  useEffect(() => {
+    if (ready) heading.current?.focus({ preventScroll: true });
+  }, [ready, shown]);
+
+  // A screen of night sky until we know who is signed in, so the wrong story never flashes.
+  if (!ready) return <div aria-busy className="min-h-dvh" />;
+  if (!story) return <EmptyState headingRef={setHeading} />;
+  return <Report session={story.session} onDevice={story.onDevice} inAccount={!!story.inAccount} headingRef={setHeading} />;
 }
 
-function EmptyState() {
+/** `inAccount`: this device's story was also saved to the account, so clearing it here keeps that copy. */
+type Story = { session: Session; onDevice: boolean; inAccount?: boolean };
+
+/**
+ * Which story the report is about. A guest sees this device's story. A signed-in family sees its
+ * newest story: this device's, if it belongs to one of their children (a guest's reading never
+ * shows under their name), or the last one saved to the account from any device.
+ */
+function pickStory(device: Session | null, account: AccountView | null): Story | null {
+  const here = device && device.attempts.length > 0 ? device : null;
+  if (!account) return here && { session: here, onDevice: true };
+  // No children yet means the book read to a demo child, the same as for a guest (see loadReader).
+  // Only a demo child's story shows then: a child who was just removed never comes back here.
+  if (account.children.length === 0) {
+    return here && DEMO_PROFILES.some((p) => p.id === here.profile.id) ? { session: here, onDevice: true } : null;
+  }
+  const kid = here && account.children.find((c) => c.id === here.profile.id);
+  // The account knows the child's current name; this device keeps the one they had when they read.
+  const mine = here && kid ? { ...here, profile: { ...here.profile, name: kid.name } } : null;
+  const inAccount =
+    !!mine &&
+    account.children.some((c) => {
+      const saved = savedSession(c);
+      return !!saved && sameReading(mine, saved);
+    });
+  let best: Story | null = mine && { session: mine, onDevice: true, inAccount };
+  for (const child of account.children) {
+    const saved = savedSession(child);
+    // A story finished on this device is saved to the account too. Keep this device's copy of it:
+    // only that one knows the starting scores and how long the reading took.
+    if (!saved || (mine && sameReading(mine, saved))) continue;
+    if (!best || lastActive(saved) > lastActive(best.session)) best = { session: saved, onDevice: false };
+  }
+  return best;
+}
+
+/** A child's last story as the account keeps it, shaped like a session on this device. */
+function savedSession(child: AccountChild): Session | null {
+  const last = child.lastSession;
+  if (!last || last.attempts.length === 0) return null;
+  return {
+    profile: { id: child.id, name: child.name, age: child.age, interests: child.interests },
+    startedAt: last.finishedAt,
+    // The account keeps the scores after the story, not before it.
+    startSkills: child.skills,
+    skills: child.skills,
+    attempts: last.attempts.map((a) => ({ ...a, at: last.finishedAt })),
+    finished: true,
+  };
+}
+
+const lastActive = (s: Session) => s.attempts[s.attempts.length - 1]?.at ?? s.startedAt;
+
+function sameReading(device: Session, saved: Session): boolean {
+  return (
+    device.finished &&
+    device.profile.id === saved.profile.id &&
+    device.attempts.length === saved.attempts.length &&
+    device.attempts.every((a, i) => {
+      const b = saved.attempts[i];
+      // The account caps answer times, so compare them the way it keeps them.
+      const ms = (n: number) => Math.min(n, MAX_ATTEMPT_MS);
+      return a.skill === b.skill && a.correct === b.correct && a.hintsUsed === b.hintsUsed && ms(a.ms) === ms(b.ms);
+    })
+  );
+}
+
+function EmptyState({ headingRef }: { headingRef: (el: HTMLElement | null) => void }) {
   return (
     <section className="mx-auto flex min-h-dvh max-w-[30rem] flex-col items-center justify-center py-16 text-center">
       <StarSprite className="h-20 w-20" />
-      <p className="mt-6 text-2xl font-medium leading-relaxed text-moon [text-wrap:balance]">
+      <p ref={headingRef} tabIndex={-1} className="mt-6 text-2xl font-medium leading-relaxed text-moon [text-wrap:balance] outline-none!">
         Read the story together, then come back here to see what was learned.
       </p>
       <Link href="/" className="glow-button mt-10 rounded-full px-10 py-5 text-2xl font-bold">
@@ -237,7 +358,17 @@ function EmptyState() {
   );
 }
 
-function Report({ session }: { session: Session }) {
+function Report({
+  session,
+  onDevice,
+  inAccount,
+  headingRef,
+}: {
+  session: Session;
+  onDevice: boolean;
+  inAccount: boolean;
+  headingRef: (el: HTMLElement | null) => void;
+}) {
   const { attempts, profile } = session;
   const name = profile.name || "Your child";
   const plan = planNext(session);
@@ -258,7 +389,11 @@ function Report({ session }: { session: Session }) {
       </nav>
 
       <header className="mt-6">
-        <h1 className="bg-gradient-to-b from-[#fff4d6] via-gold to-gold-deep bg-clip-text pb-1 text-4xl font-semibold tracking-tight text-transparent sm:text-5xl">
+        <h1
+          ref={headingRef}
+          tabIndex={-1}
+          className="bg-gradient-to-b from-[#fff4d6] via-gold to-gold-deep bg-clip-text pb-1 text-4xl font-semibold tracking-tight text-transparent outline-none! sm:text-5xl"
+        >
           {name}&apos;s {isToday ? "story today" : "latest story"}
         </h1>
         <p className="mt-3 text-lg text-mist">{date}</p>
@@ -304,26 +439,29 @@ function Report({ session }: { session: Session }) {
           )}
         </Card>
 
-        <Card label="Skills, start to now" index={4}>
-          <ul className="grid gap-5">
-            {practiced.map((id) => (
-              <SkillBar key={id} skill={id} start={session.startSkills[id]} now={session.skills[id]} />
-            ))}
-          </ul>
-          <p className="mt-5 text-sm text-mist/80">The thin line marks mastery, at {pct(MASTERY)}.</p>
-        </Card>
+        {/* A story saved from another device has no starting scores to compare with. */}
+        {onDevice && (
+          <Card label="Skills, start to now" index={4}>
+            <ul className="grid gap-5">
+              {practiced.map((id) => (
+                <SkillBar key={id} skill={id} start={session.startSkills[id]} now={session.skills[id]} />
+              ))}
+            </ul>
+            <p className="mt-5 text-sm text-mist/80">The thin line marks mastery, at {pct(MASTERY)}.</p>
+          </Card>
+        )}
 
         <Card label="Tomorrow" index={5}>
           <p className="text-2xl font-semibold text-gold">{plan.title}</p>
           <dl className="mt-4 grid gap-5">
-            <PlanRow term="New word" value={plan.word} reason={plan.wordReason} />
+            <PlanRow term={plan.word === "SUN" ? "New word" : "Word to practice"} value={plan.word} reason={plan.wordReason} />
             <PlanRow term="Letter" value={plan.letter} reason={plan.letterReason} />
             <PlanRow term="Math" value={plan.math === "adding" ? "Simple adding" : "More counting"} reason={plan.mathReason} />
           </dl>
         </Card>
       </div>
 
-      <PrivacyNote />
+      <PrivacyNote onDevice={onDevice} inAccount={inAccount} />
 
       <div className="mt-12 flex justify-center">
         <Link href="/" className="glow-button rounded-full px-10 py-5 text-2xl font-bold">
@@ -397,7 +535,8 @@ function PlanRow({ term, value, reason }: { term: string; value: string; reason:
   );
 }
 
-function PrivacyNote() {
+/** `onDevice` is false when the report comes from the account: then there is nothing here to clear. */
+function PrivacyNote({ onDevice, inAccount }: { onDevice: boolean; inAccount: boolean }) {
   const [asking, setAsking] = useState(false);
   return (
     <footer className="mt-10 px-1 text-sm leading-relaxed text-mist">
@@ -407,9 +546,11 @@ function PrivacyNote() {
         recordings are ever made or kept: the browser&apos;s speech service turns spoken answers into text. To write and read the
         story, only first name, age and interests are shared with our AI partners.
       </p>
-      {asking ? (
+      {!onDevice ? null : asking ? (
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <span className="text-base text-moon">Clear today&apos;s results from this device?</span>
+          <span className="text-base text-moon">
+            Clear today&apos;s results from this device?{inAccount && " A copy stays in your grown-up account."}
+          </span>
           <button type="button" onClick={clearSession} className="min-h-12 rounded-full bg-mist px-5 text-base font-semibold text-ink">
             Yes, clear them
           </button>
@@ -460,8 +601,9 @@ const afterHints = (n: number) => (n === 1 ? "after a hint" : "after two hints")
 
 function readHow(a: Attempt | undefined): string | null {
   if (!a) return null;
-  if (a.mode === "tap") return "Answered by tap";
+  // A give-up first: then the book said the word, whether the child had a microphone or not.
   if (!a.correct) return "Read together";
+  if (a.mode === "tap") return "Answered by tap";
   return a.hintsUsed > 0 ? `Read ${afterHints(a.hintsUsed)}` : "Read on their own";
 }
 

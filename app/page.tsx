@@ -21,7 +21,7 @@ export default function TitleScreen() {
 
       <Link
         href="/parent"
-        className="absolute bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-6 rounded-full px-3 py-2 text-sm font-medium text-mist/70 transition-colors hover:text-moon"
+        className="absolute bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-6 rounded-full px-4 py-3 text-sm font-medium text-mist/90 transition-colors hover:text-moon"
       >
         For grown-ups
       </Link>

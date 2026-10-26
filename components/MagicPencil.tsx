@@ -15,10 +15,11 @@ const DEMO_MS = 2600;
 const SLOW = 1.6; // hint demos play this much slower
 const FLIGHT_MS = 2400;
 const FLIGHT_POINTS = 80;
-const IDLE_MS = 10000;
-const MORE_MS = 1300; // after a short stroke, how long to wait for the rest of the letter
+const IDLE_MS = 10000; // counted from the end of "Now you try", though she may start during it
+const MORE_MS = 2500; // after a short stroke, how long to wait for the rest of the letter
 const MAX_HINTS = 2;
 const TAP_LENGTH = 14; // box units; shorter strokes are taps or slips, not attempts
+const HANDOFF = 10; // box units; a second touch that moves this far, while the first rests, is the drawing finger
 const STROKE_W = 7;
 const ROCKET_H = 34; // box units; the sprite is 60 x 120 and points up
 const ROCKET_PIVOT = 52 / 120; // turn around the body, a little above the fins
@@ -27,7 +28,7 @@ const PENCIL_TILT = 24; // degrees, leaning like a pencil in a right hand
 
 const GLOW = "magic-pencil-glow";
 
-type Phase = "intro" | "demo" | "turn" | "trace" | "hint" | "fly" | "done";
+type Phase = "intro" | "demo" | "trace" | "hint" | "fly" | "done";
 
 /** What the pointer handlers report to the run that is waiting for a stroke. */
 type Waiter = { down: () => void; tap: () => void; done: (stroke: Pt[]) => void };
@@ -69,6 +70,8 @@ export default function MagicPencil({ config, active, ctx }: InteractionProps<Tr
   const stroke = useRef<Pt[]>([]);
   const strokeText = useRef("");
   const continuing = useRef(false); // true while waiting for the second part of a letter drawn in pieces
+  const pieceStart = useRef(0); // where in `stroke` the newest piece begins
+  const others = useRef(new Map<number, Pt>()); // touches that came down mid-stroke, and where they landed
   const reduceRef = useRef(false);
 
   // Everything here depends only on the letter, so it is worked out once.
@@ -99,6 +102,7 @@ export default function MagicPencil({ config, active, ctx }: InteractionProps<Tr
     if (!active) return;
     const clock = new Clock();
     const alive = () => !clock.stopped && ctx.alive();
+    const resting = others.current; // the same Map for the life of the component
     const { template, demo, demoText, park, parkAngle } = geo;
     let rocketAt = park;
     let rocketAngle = parkAngle;
@@ -128,22 +132,31 @@ export default function MagicPencil({ config, active, ctx }: InteractionProps<Tr
 
     // Resolves with her stroke, "idle" if no stroke is finished within idleMs, or null if the
     // page goes away. Taps don't push the timer back (a child tapping the dot over and over still
-    // gets help), and the timer never interrupts a stroke that is being drawn.
-    const waitForStroke = (idleMs: number) =>
+    // gets help), and the timer never interrupts a stroke that is being drawn. The surface takes
+    // strokes at once, but the idle clock only starts once `armAfter` settles (the end of
+    // "Now you try"), so she may begin while the narrator is still talking.
+    const waitForStroke = (idleMs: number, armAfter: Promise<unknown> = Promise.resolve()) =>
       new Promise<Pt[] | "idle" | null>((resolve) => {
         let timer: ReturnType<typeof setTimeout> | undefined;
+        let settled = false;
         const fire = () => {
           if (drawing.current !== null) timer = clock.timeout(fire, 600);
           else finish("idle");
         };
         const finish = (result: Pt[] | "idle" | null) => {
+          if (settled) return;
+          settled = true;
           clock.clear(timer);
-          waiter.current = null;
+          if (waiter.current === me) waiter.current = null;
           resolve(result);
         };
-        waiter.current = { down: () => {}, tap: () => {}, done: finish };
+        const me: Waiter = { down: () => {}, tap: () => {}, done: finish };
+        waiter.current = me;
         clock.onStop(() => finish(null));
-        timer = clock.timeout(fire, idleMs);
+        const arm = () => {
+          if (!settled) timer = clock.timeout(fire, idleMs);
+        };
+        void armAfter.then(arm, arm);
       });
 
     // The rocket swoops along `path`, turning to face where it is going, leaving a soft gold trail.
@@ -194,9 +207,9 @@ export default function MagicPencil({ config, active, ctx }: InteractionProps<Tr
     (async () => {
       await showDemo(1);
       if (!alive()) return;
-      setPhase("turn");
-      await ctx.narrate(config.yourTurn);
-      if (!alive()) return;
+      // "Now you try" opens the surface as it starts: a child who starts drawing at those words
+      // sees her line at once. The idle clock waits for the line to end (see waitForStroke).
+      let said = ctx.narrate(config.yourTurn);
 
       const enabledAt = performance.now();
       const templateLength = pathLength(template);
@@ -210,9 +223,8 @@ export default function MagicPencil({ config, active, ctx }: InteractionProps<Tr
         if (!alive()) return;
         await showDemo(SLOW);
         if (!alive()) return;
-        // The caption still shows the help line; tell her it is her turn again.
-        setPhase("turn");
-        await ctx.narrate(config.yourTurn);
+        // The caption still shows the help line; tell her it is her turn again, pencil already in hand.
+        said = ctx.narrate(config.yourTurn);
       };
 
       for (;;) {
@@ -221,7 +233,7 @@ export default function MagicPencil({ config, active, ctx }: InteractionProps<Tr
         setLine(strokeRef.current, "");
         setPhase("trace");
 
-        let got = await waitForStroke(IDLE_MS);
+        let got = await waitForStroke(IDLE_MS, said);
         if (got === null || !alive()) return;
 
         if (got === "idle" && hintsUsed < MAX_HINTS) {
@@ -232,14 +244,21 @@ export default function MagicPencil({ config, active, ctx }: InteractionProps<Tr
         }
 
         // Some children draw an S in two pieces. A short stroke waits a moment for the rest,
-        // and the pieces are scored together as one letter.
+        // and the pieces are scored together as one letter. Others lift after a wobbly start and
+        // draw the whole S again from the dot, so the newest piece is also scored on its own.
         while (got !== "idle" && pathLength(got) < templateLength * 0.85 && !scoreTrace(got, template).pass) {
           continuing.current = true;
           const more = await waitForStroke(MORE_MS);
           continuing.current = false;
           if (more === null || !alive()) return;
           if (more === "idle") break;
-          got = more;
+          const piece = more.slice(pieceStart.current);
+          if (piece.length >= 3 && scoreTrace(piece, template).pass) {
+            got = piece;
+            setLine(strokeRef.current, piece.map(fmt).join(" ")); // drop the false start and its joining line
+          } else {
+            got = more;
+          }
         }
 
         const ms = Math.round(performance.now() - enabledAt);
@@ -249,6 +268,8 @@ export default function MagicPencil({ config, active, ctx }: InteractionProps<Tr
           // A miss after two hints still moves the story on: the rocket follows the letter instead.
           setPassed(pass);
           setPhase("fly");
+          // The whoosh, the chime and "Wheee!" start with the swoop, not after it has landed.
+          ctx.cheer();
           await fly(resample(pass && got !== "idle" ? got : template, FLIGHT_POINTS));
           if (!alive()) return;
           setPhase("done");
@@ -266,6 +287,7 @@ export default function MagicPencil({ config, active, ctx }: InteractionProps<Tr
       clock.stop();
       waiter.current = null;
       drawing.current = null;
+      resting.clear();
     };
     // config, ctx and geo are fixed for the life of this screen
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -277,11 +299,23 @@ export default function MagicPencil({ config, active, ctx }: InteractionProps<Tr
     return { x: p.x, y: p.y };
   };
 
+  // Any finger may draw, not only the first one on the glass: a child often rests her other hand
+  // on the tablet, or a grown-up's thumb holds its edge. One stroke at a time still.
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     const ctm = svgRef.current?.getScreenCTM();
-    if (!waiter.current || drawing.current !== null || !ctm || !e.isPrimary) return;
+    if (!waiter.current || !ctm) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
     e.preventDefault();
+    if (drawing.current !== null) {
+      // A second touch while one is down. If the first is a resting hand, this one takes over
+      // once it moves (see onPointerMove).
+      const p = toPoint(e);
+      if (p) {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        others.current.set(e.pointerId, p);
+      }
+      return;
+    }
     e.currentTarget.setPointerCapture(e.pointerId);
     toSvg.current = ctm.inverse(); // the page does not move mid-stroke, so one matrix will do
     drawing.current = e.pointerId;
@@ -289,17 +323,37 @@ export default function MagicPencil({ config, active, ctx }: InteractionProps<Tr
     const p = toPoint(e);
     if (continuing.current && p) {
       // The rest of a letter drawn in pieces: keep the first part and carry on from here.
+      pieceStart.current = stroke.current.length;
       stroke.current.push(p);
       strokeText.current += " " + fmt(p);
     } else {
+      pieceStart.current = 0;
       stroke.current = p ? [p] : [];
       strokeText.current = p ? fmt(p) : "";
     }
     setLine(strokeRef.current, strokeText.current);
   };
 
+  /** A touch that came down mid-stroke has moved: if the stroke's own touch is resting, the new one draws. */
+  const handOff = (id: number, p: Pt): boolean => {
+    const from = others.current.get(id);
+    if (!from || Math.hypot(p.x - from.x, p.y - from.y) < HANDOFF) return false;
+    others.current.delete(id);
+    const piece = stroke.current.slice(pieceStart.current);
+    const start = piece[0];
+    if (start && piece.some((q) => Math.hypot(q.x - start.x, q.y - start.y) >= HANDOFF)) return false; // a real stroke keeps the pencil
+    // Drop the resting touch's dot and start this piece where the moving finger landed.
+    stroke.current = [...stroke.current.slice(0, pieceStart.current), from];
+    strokeText.current = stroke.current.map(fmt).join(" ");
+    drawing.current = id;
+    return true;
+  };
+
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (drawing.current !== e.pointerId) return;
+    if (drawing.current !== e.pointerId) {
+      const p = others.current.has(e.pointerId) ? toPoint(e) : null;
+      if (!p || !handOff(e.pointerId, p)) return;
+    }
     // Coalesced events keep fast curves round on screens that batch pointer moves.
     const coalesced = e.nativeEvent.getCoalescedEvents?.();
     for (const ev of coalesced && coalesced.length ? coalesced : [e.nativeEvent]) {
@@ -313,8 +367,10 @@ export default function MagicPencil({ config, active, ctx }: InteractionProps<Tr
   };
 
   const onPointerEnd = (e: ReactPointerEvent<HTMLDivElement>) => {
+    others.current.delete(e.pointerId);
     if (drawing.current !== e.pointerId) return;
     drawing.current = null;
+    others.current.clear(); // touches still resting stay out of it until they lift
     const pts = stroke.current;
     if (pts.length < 3 || pathLength(pts) < TAP_LENGTH) {
       // A tap or a slip: wipe it and keep waiting, no attempt counted.

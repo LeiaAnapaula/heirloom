@@ -138,11 +138,10 @@ export default function ReadAloud({ config, active, ctx }: InteractionProps<Read
           else if (heard.status === "match") how = "voice";
         } else {
           enter("tap");
-          // After two hints the timer stops; the glowing word waits for her tap.
-          const tapped = await waitForTap(hintsUsed < MAX_HINTS ? LISTEN_MS : Infinity);
+          // Same quiet time as by voice, so after two hints tap mode also says it together and moves on.
+          const tapped = await waitForTap(LISTEN_MS);
           if (!alive()) return;
           if (tapped) how = "tap";
-          else if (hintsUsed >= MAX_HINTS) continue;
         }
 
         if (how) return answer(true, how);
@@ -156,7 +155,7 @@ export default function ReadAloud({ config, active, ctx }: InteractionProps<Read
         // Two hints and still no word: say it together, cheer, and move on.
         await say(giveUp);
         if (!alive()) return;
-        return answer(false, "voice");
+        return answer(false, voice ? "voice" : "tap");
       }
     })();
 
@@ -196,9 +195,9 @@ export default function ReadAloud({ config, active, ctx }: InteractionProps<Read
             onClick={() => tapRef.current?.()}
             disabled={!active || mode === "done"}
             aria-label={letters.join("")}
-            className="pointer-events-auto relative flex items-center rounded-full px-[0.5em] pb-[0.14em] pt-[0.2em] font-bold leading-none tracking-[0.04em] disabled:cursor-default"
+            // A phone held sideways gets a smaller word, so it and its pulsing ring fit on one page.
+            className="pointer-events-auto relative flex items-center rounded-full px-[0.5em] pb-[0.14em] pt-[0.2em] text-[length:clamp(3.5rem,min(9vw,14dvh),8rem)] font-bold leading-none tracking-[0.04em] disabled:cursor-default [@media(max-height:480px)]:text-[length:2.75rem]"
             style={{
-              fontSize: "clamp(3.5rem, min(9vw, 14dvh), 8rem)",
               background: "radial-gradient(120% 140% at 50% 0%, #2c3680 0%, #1e2a5e 55%, #121a40 100%)",
             }}
             initial={false}

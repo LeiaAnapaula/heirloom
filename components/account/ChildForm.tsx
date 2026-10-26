@@ -17,10 +17,12 @@ export default function ChildForm({
   initial,
   submitLabel,
   onSubmit,
+  onCancel,
 }: {
   initial?: ChildDraft;
   submitLabel: (name: string) => string;
   onSubmit: (child: ChildDraft) => Promise<string | null>; // resolves to an error message, or null when saved
+  onCancel?: () => void; // when given, a Cancel button sits beside the submit button
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [age, setAge] = useState<number | null>(initial?.age ?? null);
@@ -73,9 +75,21 @@ export default function ChildForm({
       </fieldset>
 
       <FormError message={error} />
-      <PrimaryButton type="submit" busy={busy}>
-        {submitLabel(name.trim())}
-      </PrimaryButton>
+      <div className="flex items-center gap-3">
+        <PrimaryButton type="submit" busy={busy}>
+          {submitLabel(name.trim())}
+        </PrimaryButton>
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="shrink-0 rounded-full px-5 py-3 text-lg font-semibold text-mist hover:text-moon disabled:opacity-60"
+          >
+            Cancel
+          </button>
+        )}
+      </div>
     </form>
   );
 }

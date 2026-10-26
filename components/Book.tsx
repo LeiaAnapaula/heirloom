@@ -63,7 +63,7 @@ export default function Book({
       >
         {/* The boards behind the pages, and the gold light they throw. Closed, only the right half exists. */}
         <motion.div
-          className="absolute -inset-y-[1.2%] right-[-0.8%] rounded-[2.2rem] bg-[#18205a]"
+          className="absolute -top-[1.2%] bottom-[min(-1.2%,-12px)] right-[-0.8%] rounded-[2.2rem] bg-[#18205a]"
           initial={false}
           animate={{
             left: opened ? "-0.8%" : "50%",
@@ -77,14 +77,26 @@ export default function Book({
           }}
         />
 
-        {/* The pages. Stacked cream edges along the bottom say "book". */}
+        {/* Stacked cream page edges along the bottom say "book". They sit under the pages, whose
+            clip would cut off a shadow of their own. Closed, only the right half has pages. */}
+        <motion.div
+          aria-hidden
+          className="absolute inset-y-0 right-0 rounded-[1.6rem] bg-[#121a40]"
+          style={{
+            boxShadow:
+              "0 2px 0 #efe5c8, 0 4px 0 #ddd0ab, 0 6px 0 #eae0c2, 0 8px 0 #d3c59c, 0 10px 0 #e4d9b8, 0 12px 18px rgba(0,0,0,0.35)",
+          }}
+          initial={false}
+          animate={{ left: opened ? "0%" : "50%" }}
+          transition={{ duration: reduceMotion ? 0 : OPEN_MS / 1000, ease: turnEase }}
+        />
+
+        {/* The pages. */}
         <motion.div
           className="absolute inset-0 overflow-hidden rounded-[1.6rem]"
           style={{
             background:
               "radial-gradient(120% 90% at 30% 10%, #24306b 0%, #18215099 45%, transparent 75%), radial-gradient(90% 80% at 80% 90%, #2c2766 0%, transparent 70%), #121a40",
-            boxShadow:
-              "0 2px 0 #efe5c8, 0 4px 0 #ddd0ab, 0 6px 0 #eae0c2, 0 8px 0 #d3c59c, 0 10px 0 #e4d9b8, 0 12px 18px rgba(0,0,0,0.35)",
           }}
           initial={false}
           animate={{ clipPath: opened ? "inset(0% 0% 0% 0% round 1.6rem)" : "inset(0% 0% 0% 50% round 1.6rem)" }}
@@ -95,7 +107,8 @@ export default function Book({
               key={turnKey}
               className="absolute inset-0"
               initial={{ opacity: 0 }}
-              animate={{ opacity: 1, transition: { delay: reduceMotion ? 0 : 0.45, duration: 0.5 } }}
+              // The new spread starts to show as the leaf lifts off the right page, so the book is never blank for long.
+              animate={{ opacity: 1, transition: { delay: reduceMotion ? 0 : 0.2, duration: 0.5 } }}
               exit={{ opacity: 0, transition: { duration: 0.2 } }}
             >
               {children}

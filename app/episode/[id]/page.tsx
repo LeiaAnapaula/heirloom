@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import StoryLoader from "@/components/StoryLoader";
+import StoryLoader, { SleepingBook } from "@/components/StoryLoader";
 import { episodes } from "@/content/episodes/lost-star";
 
 export function generateStaticParams() {
@@ -8,9 +8,9 @@ export function generateStaticParams() {
 }
 
 export default function EpisodePage(props: PageProps<"/episode/[id]">) {
-  // The night sky shows instantly; the episode streams in behind it.
+  // The night sky and the closed book show instantly; the episode streams in behind them.
   return (
-    <Suspense fallback={<main className="h-dvh bg-ink" />}>
+    <Suspense fallback={<SleepingBook waitingFor={null} />}>
       <EpisodeLoader params={props.params} />
     </Suspense>
   );

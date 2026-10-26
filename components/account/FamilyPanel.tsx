@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useEffect, useLayoutEffect, useState } from "react";
 import type { AccountChild, AccountView } from "@/lib/account-types";
 import { deleteAccount, fetchAccount, removeChild, signOut, updateChild } from "@/lib/account-client";
-import { setActiveProfile } from "@/lib/active-profile";
-import { clearSession } from "@/lib/session";
+import { notifyReaderChanged, setActiveProfile } from "@/lib/active-profile";
+import { clearSession, loadSession } from "@/lib/session";
 import { MIA } from "@/lib/profile";
 import ChildForm from "./ChildForm";
 
@@ -74,8 +74,10 @@ export default function FamilyPanel() {
                       if (!r.ok) return r.error;
                       setEditing(null);
                       await refresh();
+                      notifyReaderChanged(); // the report above shows the new name at once
                       return null;
                     }}
+                    onCancel={() => setEditing(null)}
                   />
                 ) : (
                   <ChildRow
@@ -85,7 +87,10 @@ export default function FamilyPanel() {
                     onRemove={async () => {
                       const r = await removeChild(c.id);
                       if (!r.ok) return setError(r.error);
+                      // Their answers from today go from this device too.
+                      if (loadSession()?.profile.id === c.id) clearSession();
                       await refresh();
+                      notifyReaderChanged(); // the report above stops showing their story at once
                     }}
                   />
                 )}
@@ -149,8 +154,12 @@ export default function FamilyPanel() {
   );
 }
 
+// The confirm button appears under the same finger, so a tap this soon after it is the second
+// half of a double tap, not a decision.
+const CONFIRM_GUARD_MS = 600;
+
 function ChildRow({ child, onRead, onEdit, onRemove }: { child: AccountChild; onRead: () => void; onEdit: () => void; onRemove: () => void }) {
-  const [confirm, setConfirm] = useState(false);
+  const [confirmAt, setConfirmAt] = useState<number | null>(null); // when "Remove" was tapped
   const last = child.lastSession ? new Date(child.lastSession.finishedAt).toLocaleDateString(undefined, { month: "long", day: "numeric" }) : null;
   return (
     <div className="flex flex-wrap items-center justify-between gap-4">
@@ -169,12 +178,22 @@ function ChildRow({ child, onRead, onEdit, onRemove }: { child: AccountChild; on
         <button onClick={onEdit} className="rounded-full px-3 py-2 text-moon/85 hover:text-gold">
           Edit
         </button>
-        {confirm ? (
-          <button onClick={onRemove} className="rounded-full px-3 py-2 text-[#ffd0d8]">
-            Remove {child.name}?
-          </button>
+        {confirmAt !== null ? (
+          <>
+            <button
+              onClick={() => {
+                if (performance.now() - confirmAt >= CONFIRM_GUARD_MS) onRemove();
+              }}
+              className="rounded-full px-3 py-2 text-[#ffd0d8]"
+            >
+              Remove {child.name}?
+            </button>
+            <button onClick={() => setConfirmAt(null)} className="rounded-full px-3 py-2 text-mist hover:text-moon">
+              Keep {child.name}
+            </button>
+          </>
         ) : (
-          <button onClick={() => setConfirm(true)} className="rounded-full px-3 py-2 text-mist hover:text-moon">
+          <button onClick={() => setConfirmAt(performance.now())} className="rounded-full px-3 py-2 text-mist hover:text-moon">
             Remove
           </button>
         )}

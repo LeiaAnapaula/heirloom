@@ -38,10 +38,17 @@ function useChoices() {
   return { account, choices, active, real: !!real };
 }
 
+/**
+ * Until the account answers, who is reading isn't known yet: the name and the picker wait unseen
+ * (their space kept) and then fade in, so a signed-in family never sees the demo children first.
+ */
+const reveal = (account: AccountView | null | undefined) =>
+  `transition-opacity duration-300 ${account === undefined ? "invisible opacity-0" : "opacity-100"}`;
+
 /** "Mia and the Lost Star", or the signed-in child's name. */
 export function ReaderTitle({ title }: { title: string }) {
-  const { active } = useChoices();
-  return <p className="mt-4 text-xl font-medium text-mist sm:text-2xl">{title.replaceAll("{name}", active.name)}</p>;
+  const { account, active } = useChoices();
+  return <p className={`mt-4 text-xl font-medium text-mist sm:text-2xl ${reveal(account)}`}>{title.replaceAll("{name}", active.name)}</p>;
 }
 
 /**
@@ -51,7 +58,7 @@ export function ReaderTitle({ title }: { title: string }) {
 export function ReaderPicker() {
   const { account, choices, active, real } = useChoices();
   return (
-    <div className="mt-10 flex flex-col items-center gap-3">
+    <div className={`mt-10 flex flex-col items-center gap-3 ${reveal(account)}`}>
       {choices.length > 1 && (
         <>
           <p className="text-sm font-medium text-mist/80">Story for</p>
@@ -67,33 +74,32 @@ export function ReaderPicker() {
                 }`}
               >
                 {c.name}
-                <span className={c.id === active.id ? "text-ink/70" : "text-mist/70"}> loves {c.loves}</span>
+                <span className={c.id === active.id ? "text-ink/75" : "text-mist/90"}> loves {c.loves}</span>
               </button>
             ))}
           </div>
         </>
       )}
-      {account !== undefined && (
-        <p className="mt-2 text-sm text-mist/80">
-          {account ? (
+      {/* Always there, one line tall, so the title doesn't jump when the links fill in. */}
+      <p className="mt-2 min-h-5 text-sm text-mist/80">
+        {account === undefined ? null : account ? (
+          <Link href="/join" className="font-semibold text-moon/80 hover:text-gold">
+            {real ? "Add a child" : "Add your child"}
+          </Link>
+        ) : (
+          <>
             <Link href="/join" className="font-semibold text-moon/80 hover:text-gold">
-              {real ? "Add a child" : "Add your child"}
+              Make a grown-up account
             </Link>
-          ) : (
-            <>
-              <Link href="/join" className="font-semibold text-moon/80 hover:text-gold">
-                Make a grown-up account
-              </Link>
-              <span aria-hidden className="mx-3 text-mist/40">
-                or
-              </span>
-              <Link href="/login" className="font-semibold text-moon/80 hover:text-gold">
-                Sign in
-              </Link>
-            </>
-          )}
-        </p>
-      )}
+            <span aria-hidden className="mx-3 text-mist/40">
+              or
+            </span>
+            <Link href="/login" className="font-semibold text-moon/80 hover:text-gold">
+              Sign in
+            </Link>
+          </>
+        )}
+      </p>
     </div>
   );
 }

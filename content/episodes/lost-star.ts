@@ -128,7 +128,7 @@ export const lostStar: Episode = {
         word: "home",
         skill: "read:HOME",
         accept: ["hom", "hoam", "holm", "homes", "homey", "hume"],
-        place: { x: 50, y: 40 },
+        place: { x: 75, y: 44 }, // the middle of the right page, so its pulsing ring stays off the fold and clear of the star's flight
         giveUp: [
           { id: "s6-giveup-1", text: "Great try, {name}! That word says HOME.", say: "Great try, {name}! That word says home." },
           { id: "s6-giveup-2", text: "Let's say it together. HOME!", say: "Let's say it together. Home!", highlight: [0, 1, 2, 3] },
@@ -144,9 +144,10 @@ export const lostStar: Episode = {
       onHelp: {
         narration: [
           { id: "s6-hint-1", text: "Let's sound it out together." },
-          { id: "s6-hint-h", text: "H...", say: "Hhh...", highlight: [0] },
+          // "Huh" and "Muh", like "Guh": the browser voice reads "Hhh" and "Mmm" as the letter names.
+          { id: "s6-hint-h", text: "H...", say: "Huh...", highlight: [0] },
           { id: "s6-hint-o", text: "O...", say: "Oh...", highlight: [1] },
-          { id: "s6-hint-m", text: "M...", say: "Mmm...", highlight: [2] },
+          { id: "s6-hint-m", text: "M...", say: "Muh...", highlight: [2] },
           { id: "s6-hint-home", text: "Home!", highlight: [0, 1, 2, 3] },
           { id: "s6-hint-try", text: "Your turn." },
         ],

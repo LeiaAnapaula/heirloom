@@ -3,7 +3,7 @@ import { episodes } from "@/content/episodes/lost-star";
 import { accounts } from "@/lib/server/accounts";
 import { readJson } from "@/lib/server/guard";
 import { currentParentId, sameOriginJson } from "@/lib/server/session";
-import { SKILL_IDS, type Attempt, type SkillId } from "@/lib/profile";
+import { MAX_ATTEMPT_MS, SKILL_IDS, type Attempt, type SkillId } from "@/lib/profile";
 
 const MODES = new Set(["voice", "tap", "trace"]);
 
@@ -29,7 +29,7 @@ function cleanProgress(body: unknown): { skills: Record<SkillId, number>; episod
       skill: a.skill as SkillId,
       correct: a.correct,
       hintsUsed: Number.isInteger(hints) && hints >= 0 && hints <= 2 ? hints : 0,
-      ms: Number.isFinite(ms) && ms >= 0 ? Math.min(Math.round(ms), 600_000) : 0,
+      ms: Number.isFinite(ms) && ms >= 0 ? Math.min(Math.round(ms), MAX_ATTEMPT_MS) : 0,
       mode: MODES.has(a.mode as string) ? (a.mode as Attempt["mode"]) : undefined,
       // the child's guess on the gravity page, as words; capped and kept with this child only
       note: typeof a.note === "string" ? a.note.slice(0, 80) : undefined,

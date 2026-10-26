@@ -26,6 +26,7 @@ import { play, preload, stop as stopVoice, unlockAudio } from "@/lib/voice";
 type Phase = "closed" | "glowing" | "opening" | "intro" | "interact" | "success" | "end";
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const END_READY_MS = 750; // the end page is fully faded in by then (Book waits 0.2 s, then fades for 0.5 s)
 
 // How long each celebration needs on screen before the page may turn, so a quick
 // "You did it!" never cuts off the rocket mid-flight.
@@ -87,6 +88,11 @@ export default function EpisodeRunner({
     phaseRef.current = p;
     setPhase(p);
   };
+  // Each narrate() call takes the voice. An older call that was cut off stops there, so it
+  // never speaks its next line, or clears the caption's highlight, over the newer one.
+  const voiceTurn = useRef(0);
+  // A celebration a page started early (ctx.cheer), so succeed() does not run it twice.
+  const cheered = useRef<{ g: number; done: Promise<void> } | null>(null);
 
   const screens = episode.screens;
   const screen = screens[Math.min(index, screens.length - 1)];
@@ -94,14 +100,16 @@ export default function EpisodeRunner({
   const narrate = useCallback(
     async (lines: Line[]) => {
       const g = gen.current;
+      const mine = ++voiceTurn.current;
+      const live = () => gen.current === g && voiceTurn.current === mine;
       for (const raw of lines) {
-        if (gen.current !== g) return;
+        if (!live()) return;
         const line = resolveLine(raw, profile.name);
         setCaption(line);
         setWordIndex(0);
-        await play(line, { onWord: (i) => gen.current === g && setWordIndex(i) });
+        await play(line, { onWord: (i) => live() && setWordIndex(i) });
       }
-      if (gen.current === g) setWordIndex(-1);
+      if (live()) setWordIndex(-1);
     },
     [profile.name],
   );
@@ -143,10 +151,30 @@ export default function EpisodeRunner({
           attempts: session.attempts.map((a) => ({ skill: a.skill, correct: a.correct, hintsUsed: a.hintsUsed, ms: a.ms, mode: a.mode, note: a.note })),
         });
       }
+      playSfx("page-turn"); // the leaf turns to The End like every other page
       setPhaseBoth("end");
     },
     [childId, episode.id, runScreen, screens.length],
   );
+
+  /** The success sounds and line. Returns when the line is done. */
+  const celebrate = useCallback(
+    (i: number) => {
+      const { narration, effect } = screens[i].onSuccess;
+      playSfx("chime");
+      const sound = sfxForEffect(effect);
+      if (sound) playSfx(sound);
+      return narrate(narration);
+    },
+    [narrate, screens],
+  );
+
+  // Start the celebration while the page still plays its payoff (the rocket swooping along her S),
+  // so the whoosh and the cheer come with the motion instead of after it. succeed() follows.
+  const cheer = useCallback(() => {
+    if (phaseRef.current !== "interact" || cheered.current?.g === gen.current) return;
+    cheered.current = { g: gen.current, done: celebrate(index) };
+  }, [celebrate, index]);
 
   const succeed = useCallback(async () => {
     if (phaseRef.current !== "interact") return;
@@ -155,15 +183,21 @@ export default function EpisodeRunner({
     setPhaseBoth("success");
     setMood("celebrate");
     const started = Date.now();
-    const { narration, effect } = screens[i].onSuccess;
-    playSfx("chime");
-    const sound = sfxForEffect(effect);
-    if (sound) playSfx(sound);
-    await narrate(narration);
+    const { effect } = screens[i].onSuccess;
+    const early = cheered.current?.g === g ? cheered.current : null;
+    cheered.current = null;
+    if (early) {
+      await early.done;
+    } else {
+      // A line still playing (the "Just say yes" nudge when she taps Yes) ends with her tap,
+      // not mid-word at the page turn.
+      stopVoice();
+      await celebrate(i);
+    }
     await wait(Math.max(900, (effect ? CELEBRATION_MS[effect] : 0) - (Date.now() - started)));
     if (gen.current !== g) return;
     advance(i);
-  }, [advance, index, narrate, screens]);
+  }, [advance, celebrate, index, screens]);
 
   // What this screen's interaction may do. A new object per screen, so nothing leaks between pages.
   const ctx = useMemo<InteractionContext>(
@@ -172,10 +206,11 @@ export default function EpisodeRunner({
       narrate,
       log: (attempt) => void logAttempt(attempt),
       succeed: () => void succeed(),
+      cheer,
       alive: () => gen.current === screenGen,
       help: screen.onHelp.narration,
     }),
-    [narrate, profile.name, screen, screenGen, succeed],
+    [cheer, narrate, profile.name, screen, screenGen, succeed],
   );
 
   // The book wakes up: it sits closed, glows, then opens on its own.
@@ -253,7 +288,8 @@ export default function EpisodeRunner({
         </svg>
       </Link>
 
-      <Book opened={opened} glowing={phase === "glowing" || asleep} turnKey={ended ? "end" : index}>
+      {/* Glowing from the first frame: the title screen's book was already glowing, so it never blinks off. */}
+      <Book opened={opened} glowing={phase === "closed" || phase === "glowing"} turnKey={ended ? "end" : index}>
         {ended ? (
           <EndPage title={withName(episode.next.title, profile.name)} onAgain={restart} />
         ) : (
@@ -275,7 +311,8 @@ export default function EpisodeRunner({
             unlockSfx();
             setTappedHere(true);
           }}
-          className="absolute inset-0 z-10 flex items-end justify-center pb-[6dvh]" aria-label="Wake up the book">
+          // Sits in the strip the page stars use once the book is open, clear of the cover.
+          className="absolute inset-0 z-10 flex items-end justify-center pb-[max(0.75rem,env(safe-area-inset-bottom))]" aria-label="Wake up the book">
           <motion.span
             className="text-xl font-semibold text-moon/90"
             animate={{ opacity: [0.5, 1, 0.5] }}
@@ -307,13 +344,20 @@ function Interaction({ screen, active, ctx }: { screen: Screen; active: boolean;
 }
 
 function EndPage({ title, onAgain }: { title: string; onAgain: () => void }) {
+  // The page fades in after the leaf turns. Until it can be seen, a tap meant for the star on
+  // the last page must not land on "Read it again" and start the story over.
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setReady(true), END_READY_MS);
+    return () => clearTimeout(t);
+  }, []);
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 text-center">
       <Spine />
       <StarSprite className="h-[22%]" />
       <p className="text-[clamp(2rem,5vw,4.5rem)] font-semibold text-gold">The End</p>
       <p className="text-[clamp(1rem,1.8vw,1.5rem)] font-medium text-mist">Next time: {title}</p>
-      <div className="mt-2 flex gap-4">
+      <div className={`mt-2 flex gap-4 ${ready ? "" : "pointer-events-none"}`}>
         <button onClick={onAgain} className="glow-button rounded-full px-8 py-3 text-xl font-bold">
           Read it again
         </button>
