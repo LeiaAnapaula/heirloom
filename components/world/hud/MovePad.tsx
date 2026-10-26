@@ -71,14 +71,22 @@ function useHeld(): Held {
 const BUTTON =
   "pointer-events-auto relative grid h-[var(--s)] w-[var(--s)] touch-none select-none place-items-center text-pine [-webkit-touch-callout:none] transition-[background-color,box-shadow,transform] duration-150 motion-safe:active:scale-95 motion-reduce:transition-none";
 
+type Look = { className: string; round?: boolean };
+
 const LOOK = {
   /** The four ways to walk: the d-pad cross. */
-  walk: "rounded-2xl bg-white/70 shadow-[0_1px_0_rgb(255_255_255/0.8)_inset,0_1px_3px_rgb(20_30_24/0.18)] hover:bg-white",
+  walk: { className: "rounded-2xl bg-white/70 shadow-[0_1px_0_rgb(255_255_255/0.8)_inset,0_1px_3px_rgb(20_30_24/0.18)] hover:bg-white" },
   /** Turning and going up or down, in the corners: quieter, round. */
-  corner: "rounded-full bg-white/40 hover:bg-white/80",
+  corner: { className: "bg-white/40 hover:bg-white/80", round: true },
   /** Home in the middle of the cross. */
-  home: "rounded-full bg-paper text-wood shadow-[inset_0_0_0_2px_rgb(138_90_59/0.35)] hover:bg-white",
-};
+  home: { className: "bg-paper text-wood shadow-[inset_0_0_0_2px_rgb(138_90_59/0.35)] hover:bg-white", round: true },
+} satisfies Record<string, Look>;
+
+/**
+ * Round buttons keep their circle (and a circular focus ring) inline, because the
+ * HUD's focus style squares every focused corner off to 14px.
+ */
+const shape = (look: Look) => (look.round ? { borderRadius: 9999 } : undefined);
 
 const PRESSED =
   "data-[pressed]:bg-honey data-[pressed]:text-pine data-[pressed]:shadow-[inset_0_0_0_2px_rgb(44_58_50/0.85)] motion-safe:data-[pressed]:scale-95";
@@ -90,7 +98,7 @@ type HoldProps = {
   move: Move;
   label: string;
   keys: string;
-  look: string;
+  look: Look;
   held: Held;
   children: ReactNode;
 };
@@ -138,7 +146,8 @@ function HoldButton({ id, move, label, keys, look, held, children }: HoldProps) 
       aria-keyshortcuts={keys}
       title={label}
       data-pressed={down || undefined}
-      className={`${BUTTON} ${look} ${PRESSED}`}
+      className={`${BUTTON} ${look.className} ${PRESSED}`}
+      style={shape(look)}
       onPointerDown={(e) => {
         if (e.pointerType === "mouse" && e.button !== 0) return;
         e.preventDefault();
@@ -167,7 +176,7 @@ function HoldButton({ id, move, label, keys, look, held, children }: HoldProps) 
 type TapProps = {
   label: string;
   keys: string;
-  look: string;
+  look: Look;
   onPress: () => void;
   children: ReactNode;
 };
@@ -180,7 +189,8 @@ function TapButton({ label, keys, look, onPress, children }: TapProps) {
       aria-label={label}
       aria-keyshortcuts={keys}
       title={label}
-      className={`${BUTTON} ${look}`}
+      className={`${BUTTON} ${look.className}`}
+      style={shape(look)}
       onClick={onPress}
       onKeyDown={(e) => {
         // The engine owns Enter for placing pieces; a focused pad button keeps it.
@@ -200,7 +210,7 @@ export default function MovePad() {
       role="group"
       aria-label="Move around"
       onContextMenu={(e) => e.preventDefault()}
-      className="flex touch-none select-none items-center gap-3.5 p-2 [--g:6px] [--s:52px] max-[379px]:[--g:5px] max-[379px]:[--s:48px] [@media(hover:hover)_and_(pointer:fine)]:p-2.5 [@media(hover:hover)_and_(pointer:fine)]:pr-3.5 [@media(hover:hover)_and_(pointer:fine)]:[--s:44px]"
+      className="flex touch-none select-none items-center gap-3.5 p-2 [--g:6px] [--s:52px] max-[379px]:[--g:5px] max-[379px]:[--s:48px] [@media(hover:hover)_and_(pointer:fine)]:p-2.5 @min-[340px]:[@media(hover:hover)_and_(pointer:fine)]:pr-3.5 [@media(hover:hover)_and_(pointer:fine)]:[--s:44px] [@media(max-height:700px)]:[--g:5px]! [@media(max-height:700px)]:[--s:44px]!"
     >
       <div className="relative grid grid-cols-[repeat(3,var(--s))] grid-rows-[repeat(3,var(--s))] gap-[var(--g)]">
         {/* A soft cross behind the four walking buttons, like a d-pad. */}
@@ -246,10 +256,10 @@ export default function MovePad() {
         </HoldButton>
       </div>
 
-      {/* The same moves on a keyboard, only where there is one. */}
+      {/* The same moves on a keyboard, only where there is one and room beside the pad. */}
       <div
         aria-hidden
-        className="hidden grid-cols-[auto_auto] items-center gap-x-2 gap-y-2 [@media(hover:hover)_and_(pointer:fine)]:grid"
+        className="hidden grid-cols-[auto_auto] items-center gap-x-2 gap-y-2 @min-[340px]:[@media(hover:hover)_and_(pointer:fine)]:grid"
       >
         <Keys keys={["W", "A", "S", "D"]} />
         <Hint>Walk</Hint>

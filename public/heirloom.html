@@ -245,6 +245,8 @@
     .pin svg { flex: none; width: 36px; height: 36px; }
     .pin span { min-width: 0; }
     .spot.below .pin { bottom: auto; top: 16px; }
+    .spot.mini .pin { padding: 4px; gap: 0; border-radius: 50%; }
+    .spot.mini .pin > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     .spot.below .spot-tail { top: 9px; }
     .spot.fresh { opacity: 0; }
     .spot.pop { animation: grow 750ms cubic-bezier(0.22, 1, 0.36, 1) both; }
@@ -568,7 +570,7 @@
       </div>
 
       <!-- Step 4: the postcard to Grandpa appears here after the child adds something. -->
-      <section class="letter-zone" id="letterZone" aria-label="Postcard to Grandpa"></section>
+      <section class="letter-zone" id="letterZone"></section>
 
       <section class="shelf" aria-labelledby="shelf-title">
         <h2 id="shelf-title">What we've built together</h2>
@@ -750,15 +752,27 @@
     function showListen() { listen.hidden = !mode; setPlaying(false); }
     showListen();
     const pickVoice = () => {
-      // A warm, low, unhurried voice if the device has one.
+      // Apple's own "Grandpa" voice if the device has it, else a warm, low, unhurried man's voice.
       const voices = speechSynthesis.getVoices().filter((v) => v.lang.startsWith("en"));
-      const wanted = ["Daniel", "Aaron", "Arthur", "Alex", "Tom", "Google UK English Male", "Microsoft Guy"];
+      const wanted = ["Grandpa (English (US))", "Grandpa (English (UK))", "Grandpa", "Daniel", "Aaron", "Arthur", "Alex", "Tom", "Google UK English Male", "Microsoft Guy"];
       for (const name of wanted) {
         const v = voices.find((x) => x.name.includes(name));
         if (v) return v;
       }
       return voices[0] || null;
     };
+    function speak() {
+      const u = new SpeechSynthesisUtterance(STORY.parts.map(partText).join(" "));
+      const v = pickVoice();
+      if (v) u.voice = v;
+      // The Grandpa voice already sounds his age; others are slowed and lowered to get close.
+      const grandpa = !!v && v.name.startsWith("Grandpa");
+      u.rate = grandpa ? 0.9 : 0.85;
+      u.pitch = grandpa ? 1 : 0.8;
+      u.onstart = () => setPlaying(true);
+      u.onend = u.onerror = () => setPlaying(false);
+      speechSynthesis.speak(u);
+    }
     listen.addEventListener("click", () => {
       if (mode === "audio") {
         if (!player) {
@@ -766,7 +780,8 @@
           player.addEventListener("playing", () => setPlaying(true));
           player.addEventListener("pause", () => setPlaying(false));
           player.addEventListener("ended", () => setPlaying(false));
-          player.addEventListener("error", () => { player = null; mode = canSpeak ? "speech" : ""; showListen(); });
+          // The recording can't be found: read the words with the device voice instead.
+          player.addEventListener("error", () => { player = null; mode = canSpeak ? "speech" : ""; showListen(); if (mode) speak(); });
         }
         if (!player.paused) { player.pause(); player.currentTime = 0; return; }
         player.play().catch(() => {});
@@ -774,14 +789,7 @@
       }
       if (mode !== "speech") return;
       if (speechSynthesis.speaking) { speechSynthesis.cancel(); setPlaying(false); return; }
-      const u = new SpeechSynthesisUtterance(STORY.parts.map(partText).join(" "));
-      const v = pickVoice();
-      if (v) u.voice = v;
-      u.rate = 0.88;
-      u.pitch = 0.85;
-      u.onstart = () => setPlaying(true);
-      u.onend = u.onerror = () => setPlaying(false);
-      speechSynthesis.speak(u);
+      speak();
     });
 
     /* ---------- The child's choices ---------- */
@@ -860,12 +868,13 @@
       placePins();
     }
     // Keep each card inside the picture: slide it sideways near the edges, flip it below its dot near the top.
+    // The newest build always gets its full card; an older one that would collide shrinks to just its drawing.
     function placePins() {
       const w = scene.clientWidth, h = scene.clientHeight;
       if (!w) return;
       const sx = pinsLayer.offsetLeft, sy = pinsLayer.offsetTop, sw = pinsLayer.offsetWidth, sh = pinsLayer.offsetHeight;
-      const edge = 10;
-      pinsLayer.querySelectorAll(".spot").forEach((el) => {
+      const edge = 8;
+      const fit = (el) => {
         const spot = byId(el.dataset.id).spot || { x: 50, y: 50 };
         const pin = el.querySelector(".pin");
         const ax = sx + (sw * spot.x) / 100;
@@ -874,8 +883,20 @@
         let left = ax - cw / 2, dx = 0;
         if (left < edge) dx = edge - left;
         else if (left + cw > w - edge) dx = w - edge - (left + cw);
+        left += dx;
+        const below = ay - 16 - ch < 4 && ay + 16 + ch < h - 4;
         pin.style.setProperty("--dx", `${Math.round(dx)}px`);
-        el.classList.toggle("below", ay - 16 - ch < edge && ay + 16 + ch < h - edge);
+        el.classList.toggle("below", below);
+        const top = below ? ay + 16 : ay - 16 - ch;
+        return { l: left, t: top, r: left + cw, b: top + ch };
+      };
+      const overlaps = (a, b) => Math.min(a.r, b.r) - Math.max(a.l, b.l) > 6 && Math.min(a.b, b.b) - Math.max(a.t, b.t) > 6;
+      const placed = [];
+      [...pinsLayer.querySelectorAll(".spot")].reverse().forEach((el) => {
+        el.classList.remove("mini");
+        let box = fit(el);
+        if (placed.some((p) => overlaps(p, box))) { el.classList.add("mini"); box = fit(el); }
+        placed.push(box);
       });
     }
     if ("ResizeObserver" in window) new ResizeObserver(placePins).observe(scene);

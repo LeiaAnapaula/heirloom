@@ -16,7 +16,9 @@ const LOOK_SPEED = 0.0045; // radians per pixel dragged
 const MIN_HEIGHT = 0.3; // the camera never sinks closer to the ground than this
 const MAX_REACH = 40; // the farthest a piece can be placed, in meters
 const TAP_SLOP = 8; // pixels a finger may wander and still count as a tap
-const TAP_MS = 450;
+const TAP_MS = 1000; // young children press and hold; moving past TAP_SLOP is what makes a drag
+const FULL_PIXEL_RATIO = 1.5; // the full world costs its splats, not its pixels, so it gets fewer of them
+const SMOOTH_MS = 20; // one frame in ten slower than this, and the world isn't running smoothly
 
 type Pose = { position: THREE.Vector3; yaw: number; pitch: number };
 
@@ -53,12 +55,15 @@ export function startWorld({ container, quality }: StartOptions): () => void {
   try {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
   } catch {
-    hud.set({ status: "error", error: "This device can't draw 3D worlds. Try Chrome or Safari on a newer device." });
+    hud.set({ status: "error", errorKind: "webgl", error: "This device can't draw 3D worlds. Try Chrome or Safari on a newer device." });
     canvas.remove();
     return () => {};
   }
   const coarse = window.matchMedia("(pointer: coarse)").matches;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, coarse ? 1.5 : 2));
+  const pixelRatio = Math.min(window.devicePixelRatio, coarse ? 1.5 : 2);
+  renderer.setPixelRatio(pixelRatio);
+  // Read each time, so changing the setting while the world is open counts straight away.
+  const still = window.matchMedia("(prefers-reduced-motion: reduce)");
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(TINTS.day.sky);
@@ -91,7 +96,8 @@ export function startWorld({ container, quality }: StartOptions): () => void {
   }
   applyPose();
 
-  let worldBox: THREE.Box3 | null = null; // where pieces may go
+  let worldBox: THREE.Box3 | null = null; // the part of the world with splats in it, sky included
+  let placeBox: THREE.Box3 | null = null; // where pieces may go: the same, minus the sky
   let groundY: number = WORLD.groundY; // ground under the camera, last time we looked
   const walkCenter = new THREE.Vector3(...WORLD.walk.center);
 
@@ -123,17 +129,17 @@ export function startWorld({ container, quality }: StartOptions): () => void {
       measureWorld(mesh);
       applyTime(hud.get().timeOfDay);
       hud.set({ status: "ready", progress: 1 });
-      const wantFull =
-        quality === "full" ||
-        (quality === "auto" && !coarse && !(navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData);
-      if (wantFull) sharpen();
+      if (quality === "full") sharpen(false);
+      else if (quality === "auto" && !coarse && !(navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData) {
+        watch = { phase: "light", from: performance.now() + 1000 };
+      }
     })
     .catch(() => {
-      if (!disposed) hud.set({ status: "error", error: "The world didn't load. Check the internet connection and try again." });
+      if (!disposed) hud.set({ status: "error", errorKind: "network", error: "The world didn't load. Check the internet connection and try again." });
     });
 
   /** Swap in the full world once it has downloaded, keeping the light one for picking spots. */
-  function sharpen() {
+  function sharpen(checkAfter: boolean) {
     hud.set({ sharpening: 0 });
     loadSplat(WORLD.splats.full, false, (p) => hud.set({ sharpening: p }), 68_524_366)
       .then((full) => {
@@ -141,10 +147,47 @@ export function startWorld({ container, quality }: StartOptions): () => void {
         scene.add(full);
         if (proxy) scene.remove(proxy); // still raycastable while out of the scene
         shown = full;
+        renderer.setPixelRatio(Math.min(pixelRatio, FULL_PIXEL_RATIO));
         applyTime(hud.get().timeOfDay);
         hud.set({ quality: "full", sharpening: null });
+        // Give it a moment to settle in, then make sure it keeps up.
+        if (checkAfter) watch = { phase: "full", from: performance.now() + 1500 };
       })
       .catch(() => hud.set({ sharpening: null }));
+  }
+
+  /** The full world can't keep up on this device: back to the light one for the rest of the visit. */
+  function soften() {
+    if (!proxy || !shown || shown === proxy) return;
+    const full = shown;
+    scene.add(proxy);
+    scene.remove(full);
+    full.dispose();
+    shown = proxy;
+    renderer.setPixelRatio(pixelRatio);
+    applyTime(hud.get().timeOfDay);
+    hud.set({ quality: "preview" });
+  }
+
+  // On "auto" the full world, about 30 times the splats, only loads where the light
+  // one runs smoothly, and goes away again if it turns out too heavy.
+  let watch: { phase: "light" | "full"; from: number } | null = null;
+  const gaps: number[] = []; // time between frames while watching, in ms
+  let watched = 0;
+
+  function watchFrames(gap: number, now: number) {
+    if (!watch || now < watch.from || gap > 1000) return; // a hidden tab is not a slow device
+    gaps.push(gap);
+    watched += gap;
+    if (watched < 2000) return;
+    gaps.sort((a, b) => a - b);
+    const smooth = gaps[Math.floor(gaps.length * 0.9)] <= SMOOTH_MS;
+    const phase = watch.phase;
+    watch = null;
+    gaps.length = 0;
+    watched = 0;
+    if (phase === "light" && smooth) sharpen(true);
+    else if (phase === "full" && !smooth) soften();
   }
 
   /** Find the part of the world worth walking in, ignoring stray far-away splats. */
@@ -168,6 +211,9 @@ export function startWorld({ container, quality }: StartOptions): () => void {
     const lo = new THREE.Vector3(pct(xs, 0.02), pct(ys, 0.02), pct(zs, 0.02));
     const hi = new THREE.Vector3(pct(xs, 0.98), pct(ys, 0.98), pct(zs, 0.98));
     worldBox = new THREE.Box3(lo, hi);
+    // The splats include the sky dome high over the hills; a piece placed up there would be lost.
+    placeBox = worldBox.clone().expandByScalar(1);
+    placeBox.max.y = Math.min(placeBox.max.y, WORLD.walk.maxY + 1.5);
     debug.bounds = worldBox;
     debug.splats = xs.length * 4;
   }
@@ -214,7 +260,16 @@ export function startWorld({ container, quality }: StartOptions): () => void {
     return hits[0] ?? null;
   }
 
+  // Each splat raycast costs several milliseconds, so the ground is only measured again after the camera moves.
+  const groundFrom = new THREE.Vector3(Infinity, 0, 0);
+  let groundYaw = 0;
+  let castThisFrame = false;
+
   function measureGround() {
+    if (!proxy || (pose.position.distanceToSquared(groundFrom) < 1e-4 && Math.abs(pose.yaw - groundYaw) < 1e-3)) return;
+    groundFrom.copy(pose.position);
+    groundYaw = pose.yaw;
+    castThisFrame = true;
     // A little ahead of the feet: Marble leaves a hole right under its own camera.
     const ahead = new THREE.Vector3(pose.position.x - Math.sin(pose.yaw) * 0.6, pose.position.y - 3, pose.position.z - Math.cos(pose.yaw) * 0.6);
     const hit = rayFromCamera(ahead);
@@ -279,7 +334,7 @@ export function startWorld({ container, quality }: StartOptions): () => void {
       g.userData.pieceId = p.id;
       piecesGroup.add(g);
       meshes.set(p.id, g);
-      if (animate) pops.set(g, performance.now());
+      if (animate && !still.matches) pops.set(g, performance.now());
     }
     applyTime(hud.get().timeOfDay);
   }
@@ -330,14 +385,19 @@ export function startWorld({ container, quality }: StartOptions): () => void {
   let ghostDirty = true;
   let lastGhostCast = 0;
 
+  /** Ground a piece can stand on: within reach, inside the world, and not up in the sky. */
+  function placeable(hit: Hit | null): hit is Hit {
+    return !!hit && hit.distance <= MAX_REACH && !!placeBox?.containsPoint(hit.point);
+  }
+
   function updateGhost(now: number) {
-    if (!ghost || !ghostDirty || now - lastGhostCast < (coarse ? 150 : 70)) return;
+    // One splat raycast per frame at most: the ground check may already have had this one.
+    if (!ghost || !ghostDirty || castThisFrame || now - lastGhostCast < (coarse ? 150 : 70)) return;
     ghostDirty = false;
     lastGhostCast = now;
     const at = hover ? toNdc(hover.x, hover.y) : ndc.set(0, 0);
     const hit = hitWorld(at);
-    const inside = hit && worldBox ? worldBox.clone().expandByScalar(1).containsPoint(hit.point) : false;
-    ghostValid = !!hit && hit.distance <= MAX_REACH && inside;
+    ghostValid = placeable(hit);
     if (hit) {
       ghostPoint.copy(hit.point);
       ghost.position.copy(hit.point);
@@ -357,8 +417,7 @@ export function startWorld({ container, quality }: StartOptions): () => void {
     const hit = at ? hitWorld(at) : null;
     let point: THREE.Vector3 | null = null;
     if (at) {
-      const inside = hit && worldBox ? worldBox.clone().expandByScalar(1).containsPoint(hit.point) : false;
-      if (hit && hit.distance <= MAX_REACH && inside) point = hit.point.clone();
+      if (placeable(hit)) point = hit.point.clone();
     } else if (ghostValid && ghost?.visible) {
       point = ghostPoint.clone();
     }
@@ -367,7 +426,7 @@ export function startWorld({ container, quality }: StartOptions): () => void {
       return;
     }
     const build = buildOf(s.tool);
-    if (build.stretch) fitToBanks(point, (s.length * build.stretch.unitM) / WORLD.metersPerUnit, facingDeg(s.tool, s.rotation) * DEG);
+    if (build.stretch) fitToBanks(point, s.length * build.stretch.unitM, facingDeg(s.tool, s.rotation) * DEG);
     actions.addPiece({
       kind: s.tool,
       position: [point.x, point.y, point.z],
@@ -438,7 +497,8 @@ export function startWorld({ container, quality }: StartOptions): () => void {
     dy = Math.atan2(Math.sin(dy), Math.cos(dy));
     to.yaw = pose.yaw + dy;
     const dist = pose.position.distanceTo(to.position);
-    const ms = Math.min(2600, 900 + dist * 120 + Math.abs(dy) * 300);
+    // With reduced motion the camera cuts straight there instead of gliding.
+    const ms = still.matches ? 1 : Math.min(2600, 900 + dist * 120 + Math.abs(dy) * 300);
     flight = { from: { position: pose.position.clone(), yaw: pose.yaw, pitch: pose.pitch }, to, start: performance.now(), ms, moment: id };
     look.vx = look.vy = 0;
     hud.set({ flying: true });
@@ -586,6 +646,13 @@ export function startWorld({ container, quality }: StartOptions): () => void {
       e.preventDefault();
       return;
     }
+    // Walking may repeat while a key is held; nothing else does. A child leaning on Enter or
+    // Backspace would otherwise stack dozens of pieces or take the whole build away. Stopping
+    // the repeated Enter here also keeps a focused HUD button from firing again and again.
+    if (e.repeat) {
+      if (e.key === "Enter") e.preventDefault();
+      return;
+    }
     const tool = buildByKey(e.key);
     if (tool) return actions.pickTool(tool);
     switch (e.code) {
@@ -598,6 +665,8 @@ export function startWorld({ container, quality }: StartOptions): () => void {
       case "KeyX":
       case "Delete":
       case "Backspace":
+        // While exploring, only a piece the child picked can go; a stray key never takes the last one.
+        if (s.mode !== "build" && !s.selected) return;
         e.preventDefault();
         return actions.removePiece();
       case "BracketLeft":
@@ -655,7 +724,8 @@ export function startWorld({ container, quality }: StartOptions): () => void {
 
   function goHome() {
     const home = startPose();
-    flight = { from: { position: pose.position.clone(), yaw: pose.yaw, pitch: pose.pitch }, to: home, start: performance.now(), ms: 1400, moment: MOMENTS[0].id };
+    flight = { from: { position: pose.position.clone(), yaw: pose.yaw, pitch: pose.pitch }, to: home, start: performance.now(), ms: still.matches ? 1 : 1400, moment: MOMENTS[0].id };
+    look.vx = look.vy = 0;
     hud.set({ flying: true });
   }
 
@@ -667,7 +737,9 @@ export function startWorld({ container, quality }: StartOptions): () => void {
 
   function frame(now: number) {
     const dt = Math.min(0.05, (now - last) / 1000);
+    watchFrames(now - last, now);
     last = now;
+    castThisFrame = false;
     elapsed.t += dt;
 
     if (flight) {

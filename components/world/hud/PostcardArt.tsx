@@ -73,13 +73,16 @@ export function Postmark({ className }: ArtProps) {
   );
 }
 
-/* The envelope comes in four layers so the card can slide in and the flap can close over it. 220 x 150. */
+/*
+ * The envelope comes in four layers so the card can slide in and the flap can
+ * close over it. 220 x 150. The closed flap reaches lower than the pocket's V
+ * everywhere, so no corner of the card can peek out between them.
+ */
 
 export function EnvelopeBack({ className }: ArtProps) {
   return (
     <svg viewBox="0 0 220 150" className={className} aria-hidden>
-      <rect x="1" y="1" width="218" height="148" rx="12" fill="#e6cc98" />
-      <rect x="1" y="1" width="218" height="148" rx="12" fill="none" stroke="#c9a76c" strokeWidth="2" />
+      <rect x="1" y="1" width="218" height="148" rx="9" fill="#e2c790" stroke="#c9a76c" strokeWidth="2" />
     </svg>
   );
 }
@@ -87,9 +90,9 @@ export function EnvelopeBack({ className }: ArtProps) {
 export function EnvelopePocket({ className }: ArtProps) {
   return (
     <svg viewBox="0 0 220 150" className={className} aria-hidden>
-      <path d="M1 14 110 92 219 14v123a12 12 0 0 1-12 12H13A12 12 0 0 1 1 137z" fill="#f6e2b5" />
-      <path d="M3 146 96 84M217 146l-93-62" stroke="#dcc08a" strokeWidth="2" strokeLinecap="round" />
-      <path d="M1 14 110 92 219 14v123a12 12 0 0 1-12 12H13A12 12 0 0 1 1 137z" fill="none" stroke="#c9a76c" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M1 3l109 89L219 3v137a9 9 0 0 1-9 9H10a9 9 0 0 1-9-9z" fill="#f6e2b5" />
+      <path d="M4 146l92-62M216 146l-92-62" stroke="#dcc08a" strokeWidth="2" strokeLinecap="round" />
+      <path d="M1 3l109 89L219 3v137a9 9 0 0 1-9 9H10a9 9 0 0 1-9-9z" fill="none" stroke="#c9a76c" strokeWidth="2" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -97,7 +100,16 @@ export function EnvelopePocket({ className }: ArtProps) {
 export function EnvelopeFlap({ className }: ArtProps) {
   return (
     <svg viewBox="0 0 220 150" className={className} aria-hidden>
-      <path d="M3 2h214L118 80.5a12 12 0 0 1-16 0z" fill="#efd7a6" stroke="#c9a76c" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M2 2h216l-97.5 89.5a15 15 0 0 1-21 0z" fill="#efd7a6" stroke="#c9a76c" strokeWidth="2" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** A tiny heart for the puff of joy where the envelope takes off. */
+export function Heart({ className }: ArtProps) {
+  return (
+    <svg viewBox="0 0 16 16" className={className} aria-hidden>
+      <path d="M2.5 6.2c0-3 3.9-4.1 5.5-1.4 1.6-2.7 5.5-1.6 5.5 1.4 0 3.4-5.5 6.8-5.5 6.8S2.5 9.6 2.5 6.2z" fill="currentColor" />
     </svg>
   );
 }
@@ -159,7 +171,7 @@ export function FallbackScene({ className, bridge }: ArtProps & { bridge?: boole
         <g stroke="#8a5a3b" strokeLinecap="round" fill="none">
           <path d="M84 168c16-30 116-30 132 0" strokeWidth="7" />
           <path d="M78 150h144" strokeWidth="5" />
-          <path d="M112 150v-0M110 150v9M150 150v6M190 150v9" strokeWidth="3.5" />
+          <path d="M110 150v9M150 150v6M190 150v9" strokeWidth="3.5" />
         </g>
       )}
     </svg>

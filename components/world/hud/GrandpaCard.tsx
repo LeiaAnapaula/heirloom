@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useId, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { GRANDPA, MOMENTS, momentOf, type Moment, type MomentId } from "../config";
 import { actions, hud, useHud } from "../store";
 import { Icon } from "./icons";
+import Portrait from "./Portrait";
 import { HudButton, Panel } from "./ui";
 
 /**
@@ -16,9 +17,9 @@ import { HudButton, Panel } from "./ui";
  * reads it, and the button says "Read it aloud", never that it is his voice.
  */
 
-/** A calm, unhurried device voice. */
-const RATE = 0.9;
-const PITCH = 0.95;
+/** A calm, unhurried device voice, a little lower and slower than usual so it sounds like an older man. */
+const RATE = 0.85;
+const PITCH = 0.8;
 /** The quiet beat between one part of the story and the next. */
 const PAUSE_MS = 700;
 
@@ -39,17 +40,23 @@ function readingMs(text: string): number {
 
 /** Novelty and robot voices some systems ship. None of them should tell a bedtime story. */
 const ODD_VOICES =
-  /albert|bad news|bahh|bells|boing|bubbles|cellos|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|junior|ralph|kathy|princess|deranged|hysterical|fred|grandpa|grandma|eddy|flo\b|reed|rocko|sandy|shelley/i;
-const CALM_VOICES = ["Daniel", "Arthur", "Aaron", "Google UK English Male", "Microsoft Guy", "Microsoft Ryan", "Alex", "Tom", "Samantha"];
+  /albert|bad news|bahh|bells|boing|bubbles|cellos|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|junior|ralph|kathy|princess|deranged|hysterical|fred|grandma|eddy|flo\b|reed|rocko|sandy|shelley/i;
+/** Apple's own "Grandpa" voice first (an older man, on Macs, iPhones and iPads), then deep, calm men's voices. */
+const GRANDPA_VOICES = ["Grandpa (English (US))", "Grandpa (English (UK))", "Grandpa", "Daniel", "Arthur", "Aaron", "Google UK English Male", "Microsoft Guy", "Microsoft Ryan", "Alex", "Tom"];
 
 function pickVoice(): SpeechSynthesisVoice | null {
   const english = window.speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith("en") && !ODD_VOICES.test(v.name));
   if (!english.length) return null;
-  for (const name of CALM_VOICES) {
+  for (const name of GRANDPA_VOICES) {
     const v = english.find((x) => x.name.includes(name));
     if (v) return v;
   }
   return english.find((v) => /enhanced|premium|natural/i.test(v.name)) ?? english.find((v) => v.default) ?? english[0];
+}
+
+/** The Grandpa voice already sounds his age; the others are lowered and slowed to get close. */
+function isGrandpaVoice(v: SpeechSynthesisVoice | null): boolean {
+  return !!v && v.name.startsWith("Grandpa");
 }
 
 /** One line at a time: Grandpa's recording, else the device voice, else a quiet reading pause. */
@@ -103,8 +110,8 @@ function createNarrator() {
         } else {
           u.lang = "en-US";
         }
-        u.rate = RATE;
-        u.pitch = PITCH;
+        u.rate = isGrandpaVoice(voice) ? 0.9 : RATE;
+        u.pitch = isGrandpaVoice(voice) ? 1 : PITCH;
         let started = false;
         u.onstart = () => {
           started = true;
@@ -183,7 +190,7 @@ function createStoryteller() {
     report(IDLE);
   }
 
-  /** Read the current moment's line. Stops by itself if the camera goes somewhere else. */
+  /** Read the current moment's line. Stops by itself when the camera sets off somewhere else. */
   function line(id: MomentId, onRun: (r: Run) => void) {
     stop();
     report = onRun;
@@ -198,8 +205,11 @@ function createStoryteller() {
       report(IDLE);
     };
     end = finish;
+    let wasFlying = hud.get().flying;
     unsubscribe = hud.subscribe(() => {
-      if (hud.get().moment !== id) finish();
+      const s = hud.get();
+      if (s.moment !== id || (s.flying && !wasFlying)) finish();
+      wasFlying = s.flying;
     });
     report({ kind: "line", moment: id });
     void narrator.say(momentOf(id), actions.setSpeaking).then(finish);
@@ -291,6 +301,9 @@ function unlockSpeech() {
   window.speechSynthesis.speak(u);
 }
 
+const [firstName, ...rest] = GRANDPA.name.split(" ");
+const otherNames = rest.join(" ");
+
 export default function GrandpaCard() {
   const momentId = useHud((s) => s.moment);
   const speaking = useHud((s) => s.speaking);
@@ -300,6 +313,7 @@ export default function GrandpaCard() {
   const [run, setRun] = useState<Run>(IDLE);
   const [open, setOpen] = useState(false); // phones: the chip opens to show the line
   const bodyId = useId();
+  const [scroller, more] = useMoreBelow<HTMLDivElement>(momentId);
 
   useEffect(() => () => teller.dispose(), [teller]);
 
@@ -320,6 +334,7 @@ export default function GrandpaCard() {
   // Grandpa's recording, the device voice, or nothing to read with.
   const readLabel = moment?.audio ? "Hear Grandpa" : speech ? "Read it aloud" : null;
   const part = touring ? `Part ${run.index + 1} of ${MOMENTS.length}` : null;
+  const showRead = !!readLabel && !!moment && !touring;
 
   const toggleTour = () => {
     if (touring) return teller.stop();
@@ -332,39 +347,53 @@ export default function GrandpaCard() {
   };
 
   const playLabel = touring ? "Stop the story" : "Play the story";
+  const words = "font-display text-[17px] leading-[1.55] roomy:[@media(min-height:821px)]:text-[18px]";
 
   return (
     <Panel
-      className={`flex w-full flex-col p-2 max-sm:max-h-[33svh] sm:max-h-[min(62svh,560px)] sm:max-w-[380px] sm:p-4 lg:max-w-none ${open ? "max-sm:pb-3" : ""}`}
+      className={`flex w-full flex-col p-2 compact:max-h-[33svh] roomy:max-h-[min(62svh,560px)] roomy:max-w-[380px] roomy:p-4 lg:max-w-none ${open ? "compact:pb-2.5" : ""}`}
       aria-label={`${GRANDPA.name}, telling ${GRANDPA.title}`}
       role="region"
     >
       {/* Phones: a small chip. Tap Grandpa to open his words. */}
-      <div className="flex shrink-0 items-center gap-1.5 sm:hidden">
+      <div className="flex shrink-0 items-center gap-1.5 roomy:hidden">
         <button
           type="button"
           aria-expanded={open}
           aria-controls={bodyId}
+          aria-label={`${GRANDPA.name}'s words`}
           onClick={() => setOpen((o) => !o)}
-          className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-2xl pr-1 text-left"
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-2xl text-left"
         >
-          <Portrait speaking={speaking} className="h-11 w-11" />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate font-display text-[16px] leading-tight font-semibold">{GRANDPA.name}</span>
-            <span className="block truncate text-[12.5px] leading-snug font-bold text-pine/65">
+          <span className="relative shrink-0">
+            <Portrait speaking={speaking} className="h-11 w-11" />
+            <span
+              aria-hidden
+              className="absolute -right-1 -bottom-1 grid h-[18px] w-[18px] place-items-center rounded-full bg-paper text-pine shadow-[0_0_0_1.5px_rgb(44_58_50/0.25)]"
+            >
+              <Chevron open={open} className="h-3 w-3" />
+            </span>
+          </span>
+          {/* The name wraps onto two lines when the chip is narrow, only "Grandpa" stays when it is
+              narrower, and on the smallest phones the portrait says it alone; with room, the current
+              part shows under it. */}
+          <span className="@container min-w-0 flex-1">
+            <span className="line-clamp-2 font-display text-[16px] leading-[1.1] font-semibold @max-[72px]:text-[13.5px] @max-[50px]:sr-only">
+              {firstName}
+              <span className="@max-[72px]:hidden"> {otherNames}</span>
+            </span>
+            <span className="hidden truncate text-[12.5px] leading-snug font-bold text-pine/65 @min-[112px]:block">
               {part ?? moment?.label ?? GRANDPA.title}
             </span>
           </span>
-          <Chevron open={open} className="h-5 w-5 shrink-0 text-pine/60" />
-          <span className="sr-only">{open ? "Hide Grandpa's words" : "Show Grandpa's words"}</span>
         </button>
-        <HudButton primary round onClick={toggleTour} disabled={!ready} aria-label={playLabel}>
+        <HudButton primary round onClick={toggleTour} disabled={!ready} aria-label={playLabel} className="motion-reduce:transition-none">
           {touring ? <StopIcon className="h-5 w-5" /> : <Icon.play className="h-5 w-5" />}
         </HudButton>
       </div>
 
       {/* Tablets and computers: the full card. */}
-      <div className="hidden shrink-0 items-center gap-3 sm:flex">
+      <div className="hidden shrink-0 items-center gap-3 roomy:flex">
         <Portrait speaking={speaking} className="h-[60px] w-[60px]" />
         <div className="min-w-0">
           <p className="font-display text-[19px] leading-tight font-semibold">{GRANDPA.name}</p>
@@ -372,44 +401,48 @@ export default function GrandpaCard() {
         </div>
       </div>
 
-      <div id={bodyId} className={`${open ? "flex" : "hidden"} min-h-0 flex-col sm:flex`}>
-        <div className="mt-2.5 min-h-0 overflow-y-auto overscroll-contain sm:mt-3">
-          {moment ? (
-            <>
-              <p className="flex items-center gap-1.5 text-[13px] font-extrabold text-wood">
-                <span
-                  aria-hidden
-                  className="grid h-[20px] w-[20px] place-items-center rounded-full bg-honey text-[11.5px] text-pine shadow-[0_0_0_2px_#fff8e6]"
-                >
-                  {number}
-                </span>
-                <span>
-                  <span className="sr-only">Part {number}: </span>
-                  {moment.label}
-                </span>
+      <div id={bodyId} className={`${open ? "flex" : "hidden"} min-h-0 flex-col roomy:flex`}>
+        <div
+          ref={scroller}
+          className={`mt-2 min-h-0 overflow-y-auto overscroll-contain roomy:mt-3 ${
+            more ? "[mask-image:linear-gradient(to_bottom,#000_calc(100%-32px),transparent)]" : ""
+          }`}
+        >
+          <div>
+            {moment ? (
+              <>
+                <p className="flex items-center gap-1.5 text-[13px] font-extrabold text-wood compact:hidden">
+                  <span
+                    aria-hidden
+                    className="grid h-[20px] w-[20px] place-items-center rounded-full bg-honey text-[11.5px] text-pine shadow-[0_0_0_2px_#fff8e6]"
+                  >
+                    {number}
+                  </span>
+                  <span>
+                    <span className="sr-only">Part {number}: </span>
+                    {moment.label}
+                  </span>
+                </p>
+                <blockquote className={`${words} text-pine roomy:mt-1.5`} style={SOFT}>
+                  &ldquo;{moment.line}&rdquo;
+                </blockquote>
+              </>
+            ) : (
+              <p className={words} style={SOFT}>
+                Tap a number to hear Grandpa&rsquo;s story.
               </p>
-              <blockquote
-                className={`mt-1.5 font-display text-[17px] leading-[1.55] text-pine sm:text-[18px] ${speaking ? "text-pine" : "text-pine/95"}`}
-                style={{ fontVariationSettings: '"SOFT" 100' }}
-              >
-                &ldquo;{moment.line}&rdquo;
-              </blockquote>
-            </>
-          ) : (
-            <p className="font-display text-[17px] leading-[1.5] sm:text-[18px]" style={{ fontVariationSettings: '"SOFT" 100' }}>
-              Tap a number to hear Grandpa&rsquo;s story.
-            </p>
-          )}
+            )}
+          </div>
         </div>
 
-        <div className="mt-3 flex shrink-0 flex-wrap items-center gap-2">
-          <HudButton primary onClick={toggleTour} disabled={!ready} className="max-sm:hidden">
+        <div className={`mt-2.5 flex shrink-0 flex-wrap items-center gap-2 roomy:mt-3 ${showRead || touring ? "" : "compact:hidden"}`}>
+          <HudButton primary onClick={toggleTour} disabled={!ready} className="gap-1.5! px-3! motion-reduce:transition-none compact:hidden">
             {touring ? <StopIcon className="h-5 w-5" /> : <Icon.play className="h-5 w-5" />}
             <span>{touring ? "Stop" : "Play the story"}</span>
             {touring && <span className="sr-only"> the story</span>}
           </HudButton>
-          {readLabel && moment && !touring && (
-            <HudButton onClick={toggleLine} active={reading}>
+          {showRead && (
+            <HudButton onClick={toggleLine} active={reading} className="gap-1.5! px-3! motion-reduce:transition-none">
               {reading ? <StopIcon className="h-5 w-5" /> : <Icon.speaker className="h-5 w-5" />}
               <span>{reading ? "Stop reading" : readLabel}</span>
             </HudButton>
@@ -419,6 +452,35 @@ export default function GrandpaCard() {
       </div>
     </Panel>
   );
+}
+
+/** Fraunces at its softest, for Grandpa's words. */
+const SOFT = { fontVariationSettings: '"SOFT" 100' };
+
+/**
+ * True while the box has more to scroll to below, so the last line can fade out as a hint.
+ * A new `page` (the next moment) starts again from the top.
+ */
+function useMoreBelow<T extends HTMLElement>(page: unknown) {
+  const ref = useRef<T>(null);
+  const [more, setMore] = useState(false);
+  useEffect(() => {
+    ref.current?.scrollTo({ top: 0 });
+  }, [page]);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 4);
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    el.addEventListener("scroll", check, { passive: true });
+    return () => {
+      ro.disconnect();
+      el.removeEventListener("scroll", check);
+    };
+  }, []);
+  return [ref, more] as const;
 }
 
 /** Which part of the story the tour is on: small dots and "Part 2 of 4". */
@@ -443,58 +505,6 @@ function TourProgress({ index }: { index: number }) {
 }
 
 /** Grandpa, drawn small and warm: white hair and mustache under a flat cap, a moss cardigan. */
-function Portrait({ className = "", speaking }: { className?: string; speaking: boolean }) {
-  return (
-    <span aria-hidden className={`relative block shrink-0 ${className}`}>
-      {speaking && <span className="absolute -inset-1.5 rounded-full bg-honey/45 motion-safe:animate-pulse" />}
-      <span
-        className={`relative block h-full w-full overflow-hidden rounded-full border-[3px] bg-[#f6e2b5] transition-colors duration-300 motion-reduce:transition-none ${
-          speaking ? "border-honey" : "border-wood"
-        }`}
-      >
-        <svg viewBox="0 0 64 64" className="h-full w-full">
-          {/* a soft sky behind him */}
-          <circle cx="50" cy="12" r="9" fill="#fff3d6" opacity=".8" />
-          {/* cardigan, shirt, buttons */}
-          <path d="M5 66c1-13 11-20 27-20s26 7 27 20z" fill="#6f8e5f" />
-          <path d="M25 46.5 32 58l7-11.5c-2.2-.6-4.5-.9-7-.9s-4.8.3-7 .9z" fill="#eef1e8" />
-          <path d="M25 46.5 32 58M39 46.5 32 58" stroke="#56724a" strokeWidth="1.6" strokeLinecap="round" />
-          <circle cx="32" cy="61.5" r="1.4" fill="#8a5a3b" />
-          {/* neck and ears */}
-          <path d="M27.5 40h9v7.5c-1.4 1.3-2.9 2-4.5 2s-3.1-.7-4.5-2z" fill="#d9a07a" />
-          <ellipse cx="19.6" cy="32" rx="2.6" ry="3.6" fill="#e5ad88" />
-          <ellipse cx="44.4" cy="32" rx="2.6" ry="3.6" fill="#e5ad88" />
-          {/* face */}
-          <ellipse cx="32" cy="31" rx="12.4" ry="13.6" fill="#ecbd97" />
-          {/* white hair at the temples */}
-          <path d="M19.4 24.5c-1.6 3-1.6 6.4-.4 9.4l2.6-.6c-.7-2.7-.5-5.6.6-8.3z" fill="#f7f4ee" />
-          <path d="M44.6 24.5c1.6 3 1.6 6.4.4 9.4l-2.6-.6c.7-2.7.5-5.6-.6-8.3z" fill="#f7f4ee" />
-          {/* flat cap */}
-          <path d="M18.6 25.2C17.8 15.6 24.4 10.5 32.6 10.5c8.4 0 14.6 4.6 13.4 13.6-4.6-2.4-21.6-2.8-27.4 1.1z" fill="#8a5a3b" />
-          <path d="M17 25.4c5.6-4.4 24.4-4.6 30.4-.9-.6 1.6-2.2 2-4 1.6-6.4-1.5-16.4-1.4-22.6.4-1.7.5-3.2.1-3.8-1.1z" fill="#6b4329" />
-          <path d="M24 14.5c3-1.8 8-2.4 12-1.4" stroke="#a8734e" strokeWidth="1.4" strokeLinecap="round" fill="none" />
-          {/* kind, smiling eyes under soft white brows */}
-          <path d="M23.4 28.6c1.6-1.2 4-1.3 5.6-.2M35 28.4c1.6-1.1 4-1 5.6.2" stroke="#f7f4ee" strokeWidth="2.2" strokeLinecap="round" fill="none" />
-          <path d="M24.4 32.6c1.4-1.5 3.4-1.5 4.8 0M34.8 32.6c1.4-1.5 3.4-1.5 4.8 0" stroke="#2c3a32" strokeWidth="1.7" strokeLinecap="round" fill="none" />
-          <path d="M22.6 32.4l-1.3.6M41.4 32.4l1.3.6" stroke="#c98d68" strokeWidth="1" strokeLinecap="round" />
-          {/* rosy cheeks and a round nose */}
-          <circle cx="24" cy="37.4" r="2.6" fill="#c8574a" opacity=".22" />
-          <circle cx="40" cy="37.4" r="2.6" fill="#c8574a" opacity=".22" />
-          <ellipse cx="32" cy="36" rx="2.7" ry="2.3" fill="#dc9f7b" />
-          {/* a big white mustache and a small smile */}
-          <path
-            d="M23.6 41.4c1.4-3.4 5.6-4 8.4-2 2.8-2 7-1.4 8.4 2-2.4 1.6-5.4 1.2-8.4-.4-3 1.6-6 2-8.4.4z"
-            fill="#f7f4ee"
-            stroke="#ddd6c8"
-            strokeWidth=".6"
-          />
-          <path d="M29.2 43.8c1.8 1.3 3.8 1.3 5.6 0" stroke="#9a5644" strokeWidth="1.4" strokeLinecap="round" fill="none" />
-        </svg>
-      </span>
-    </span>
-  );
-}
-
 function StopIcon({ className = "h-5 w-5" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden>

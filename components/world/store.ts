@@ -40,8 +40,12 @@ export type HudState = {
   quality: "preview" | "full";
   sharpening: number | null; // 0..1 while the full-detail world downloads in the background
   error: string | null;
+  /** Why the world isn't showing: no 3D on this device (trying again won't help), or the download failed or stalled. */
+  errorKind: "webgl" | "network" | "stalled" | null;
 
   moment: MomentId | null; // the story moment the camera is at, if any
+  /** Goes up by one whenever the child moves or looks around themselves, so a story tour knows to step aside. */
+  steer: number;
   visited: MomentId[]; // moments the child has been to, in the order they went
   flying: boolean; // the camera is gliding to a moment
 
@@ -58,6 +62,7 @@ export type HudState = {
 
   childName: string;
   speaking: boolean; // the story is being read aloud
+  storyOpen: boolean; // Grandpa's words are open on a phone, so the layout makes room
   postcardOpen: boolean;
   sent: boolean; // the postcard went to Grandpa
   notice: { text: string; at: number } | null; // a short friendly line, shown for a moment
@@ -69,7 +74,9 @@ export const INITIAL: HudState = {
   quality: "preview",
   sharpening: null,
   error: null,
+  errorKind: null,
   moment: null,
+  steer: 0,
   visited: [],
   flying: false,
   mode: "explore",
@@ -83,6 +90,7 @@ export const INITIAL: HudState = {
   timeOfDay: "day",
   childName: "",
   speaking: false,
+  storyOpen: false,
   postcardOpen: false,
   sent: false,
   notice: null,
@@ -177,6 +185,9 @@ export const actions = {
 
   setChildName: (childName: string) => hud.set({ childName }),
   setSpeaking: (speaking: boolean) => hud.set({ speaking }),
+  setStoryOpen: (storyOpen: boolean) => hud.set({ storyOpen }),
+  /** The child moved or looked around on their own. */
+  steered: () => hud.set((s) => ({ steer: s.steer + 1 })),
   openPostcard: () => hud.set({ postcardOpen: true }),
   closePostcard: () => hud.set({ postcardOpen: false }),
   markSent: () => hud.set({ sent: true }),

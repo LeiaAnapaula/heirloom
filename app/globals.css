@@ -27,6 +27,21 @@
   --color-leaf: #6f8e5f; /* done, visited, growing */
 }
 
+/*
+  Screen shapes for the 3D world's HUD. compact: a phone, or any screen too short for
+  the full panels. short: a phone held sideways.
+*/
+@custom-variant compact {
+  @media (max-width: 639px) {
+    @slot;
+  }
+  @media (max-height: 500px) {
+    @slot;
+  }
+}
+@custom-variant roomy (@media (min-width: 640px) and (min-height: 501px));
+@custom-variant short (@media (max-height: 500px) and (max-width: 1023px));
+
 @theme inline {
   --font-sans: var(--font-quicksand), ui-rounded, system-ui, sans-serif;
   --font-display: var(--font-fraunces), Georgia, serif;

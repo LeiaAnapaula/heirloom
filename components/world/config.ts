@@ -17,10 +17,13 @@ export const WORLD = {
     preview: `${CDN}/210475d2-5081-4ac2-a210-1ee8586d2368_ceramic_150k.spz`, // 2.4 MB
     full: `${CDN}/1cf50915-fb47-4785-ba98-2d33763cc043_ceramic.spz`, // 68.5 MB
   },
-  /** Marble worlds come out about life size. Change this if pieces look too big or small. */
+  /**
+   * Meters in one world unit, for the distances the child reads. Marble worlds come
+   * out about life size. Pieces are built in meters and this does not resize them.
+   */
   metersPerUnit: 1,
-  /** Where the camera starts, looking the way Marble's own viewer does. */
-  start: { position: [0, 0, 0] as [number, number, number], yawDeg: 0, pitchDeg: -6 },
+  /** Where the camera starts: the first moment of the story, the river bend. */
+  start: { position: [0.4, 0.15, 0.4] as [number, number, number], yawDeg: -8, pitchDeg: -8 },
   /**
    * A Marble world looks right near where its camera stood and comes apart farther
    * out, so the child walks inside a bubble: this far from the center, between these heights.
@@ -100,7 +103,7 @@ export type Build = {
   size: [number, number, number];
   /** Pieces that stretch are measured in planks the child can count. */
   stretch?: { unit: string; unitM: number; min: number; max: number; initial: number };
-  /** What Grandpa reads on the postcard. */
+  /** The child's line on the postcard, in their own voice ("I built..."). Their name only signs it. */
   message: (name: string) => string;
 };
 
@@ -112,15 +115,15 @@ export const BUILDS: Build[] = [
     key: "1",
     size: [1.6, 1.1, 0.4],
     stretch: { unit: "plank", unitM: 0.4, min: 4, max: 24, initial: 8 },
-    message: (n) => `${n} built a bridge across your river!`,
+    message: () => "I built a bridge across your river!",
   },
-  { kind: "garden", label: "Garden", noun: "garden", key: "2", size: [2.4, 0.5, 1.6], message: (n) => `${n} planted yellow flowers by your path!` },
-  { kind: "house", label: "House", noun: "house", key: "3", size: [2.6, 2.8, 2.4], message: (n) => `${n} built a little house next to yours!` },
-  { kind: "treehouse", label: "Treehouse", noun: "treehouse", key: "4", size: [3, 5, 3], message: (n) => `${n} built a treehouse on your hill!` },
-  { kind: "lantern", label: "Lantern", noun: "lantern", key: "5", size: [0.4, 1.8, 0.4], message: (n) => `${n} hung a lantern so you can find your way at night.` },
-  { kind: "bench", label: "Bench", noun: "bench", key: "6", size: [1.6, 0.9, 0.6], message: (n) => `${n} made a bench where you can both sit.` },
-  { kind: "boat", label: "Boat", noun: "boat", key: "7", size: [3, 0.6, 1.2], message: (n) => `${n} made a boat, like old Pavel's.` },
-  { kind: "tree", label: "Tree", noun: "tree", key: "8", size: [2.2, 4, 2.2], message: (n) => `${n} planted a tree by the river.` },
+  { kind: "garden", label: "Garden", noun: "garden", key: "2", size: [2.4, 0.5, 1.6], message: () => "I planted yellow flowers by your path!" },
+  { kind: "house", label: "House", noun: "house", key: "3", size: [2.6, 2.8, 2.4], message: () => "I built a little house next to yours!" },
+  { kind: "treehouse", label: "Treehouse", noun: "treehouse", key: "4", size: [3, 5, 3], message: () => "I built a treehouse on your hill!" },
+  { kind: "lantern", label: "Lantern", noun: "lantern", key: "5", size: [0.4, 1.8, 0.4], message: () => "I hung a lantern so you can find your way at night." },
+  { kind: "bench", label: "Bench", noun: "bench", key: "6", size: [1.6, 0.9, 0.6], message: () => "I made a bench where we can both sit." },
+  { kind: "boat", label: "Boat", noun: "boat", key: "7", size: [3, 0.6, 1.2], message: () => "I made a boat, like old Pavel's." },
+  { kind: "tree", label: "Tree", noun: "tree", key: "8", size: [2.2, 4, 2.2], message: () => "I planted a tree by the river." },
 ];
 
 export function buildOf(kind: BuildKind): Build {

@@ -17,27 +17,36 @@ import WorldControls from "./hud/WorldControls";
  * sits in a grid of named areas around it, so each panel only has to look after
  * itself. On a phone the areas stack into two columns.
  *
- *   desktop                          phone
- *   story    timeline    stats       story     stats
- *   .        .           .           timeline  timeline
- *   move     build       world       .         .
+ *   desktop                          phone                  phone held sideways
+ *   story    timeline    stats       story     stats        story  timeline  stats
+ *   .        .           .           timeline  timeline     move   .         world
+ *   move     build       world       .         .            move   build     build
+ *                                                           (while building, build spans the row)
  *                                    move      world
  *                                    build     build
+ *
+ * While building on a small screen, the move pad and time of day step aside so the
+ * build bar and the aiming circle in the middle have the room.
  */
 export default function WorldApp() {
   const stage = useRef<HTMLDivElement>(null);
+  const mode = useHud((s) => s.mode);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const q = params.get("quality");
     hud.reset();
-    // ?fresh starts with an empty world (for rehearsals); otherwise the child's pieces come back.
-    if (!params.has("fresh")) hud.set({ pieces: loadPieces() });
+    // ?fresh starts with an empty world for rehearsals and saves nothing, so the child's own
+    // world on this device is still there next time. Otherwise the child's pieces come back.
+    const fresh = params.has("fresh");
+    if (!fresh) hud.set({ pieces: loadPieces() });
     let saved = hud.get().pieces;
-    const unsave = hud.subscribe(() => {
-      const { pieces } = hud.get();
-      if (pieces !== saved) savePieces((saved = pieces));
-    });
+    const unsave = fresh
+      ? () => {}
+      : hud.subscribe(() => {
+          const { pieces } = hud.get();
+          if (pieces !== saved) savePieces((saved = pieces));
+        });
 
     let stop = () => {};
     let cancelled = false;
@@ -54,18 +63,23 @@ export default function WorldApp() {
   }, []);
 
   return (
-    <main className="heirloom fixed inset-0 overflow-hidden bg-[#cfdde6] font-ui text-pine select-none">
+    <main data-mode={mode} className="heirloom group/world fixed inset-0 overflow-hidden bg-[#cfdde6] font-ui text-pine select-none">
       <div ref={stage} className="absolute inset-0" />
       <LoadingVeil />
       <Reticle />
 
+      {/* A mouse click never leaves focus on a HUD button, so Enter keeps placing pieces and the
+          arrow keys keep walking. Keyboard focus is untouched. */}
       <div
-        className="pointer-events-none absolute inset-0 grid gap-3 p-3 [grid-template-areas:'story_stats'_'timeline_timeline'_'._.'_'move_world'_'build_build'] [grid-template-columns:minmax(0,1fr)_auto] [grid-template-rows:auto_auto_1fr_auto_auto] sm:p-4 lg:[grid-template-areas:'story_timeline_stats'_'._._.'_'move_build_world'] lg:[grid-template-columns:minmax(260px,340px)_minmax(0,1fr)_minmax(220px,280px)] lg:[grid-template-rows:auto_1fr_auto]"
+        onMouseDown={(e) => {
+          if ((e.target as HTMLElement).closest("button")) e.preventDefault();
+        }}
+        className="pointer-events-none absolute inset-0 grid gap-3 [--pad:0.75rem] [grid-template-areas:'story_stats'_'timeline_timeline'_'._.'_'move_world'_'build_build'] [grid-template-columns:minmax(0,1fr)_auto] [grid-template-rows:auto_auto_1fr_auto_auto] short:gap-2.5 short:[grid-template-areas:'story_timeline_stats'_'move_._world'_'move_build_build'] short:[grid-template-columns:minmax(170px,230px)_minmax(0,1fr)_auto] short:[grid-template-rows:auto_1fr_auto] short:group-data-[mode=build]/world:[grid-template-areas:'story_timeline_stats'_'._._.'_'build_build_build'] roomy:[--pad:1rem] lg:[grid-template-areas:'story_timeline_stats'_'._._.'_'move_build_world'] lg:[grid-template-columns:clamp(240px,22vw,340px)_minmax(0,1fr)_clamp(200px,18vw,280px)] lg:[grid-template-rows:auto_1fr_auto]"
         style={{
-          paddingTop: "max(0.75rem, env(safe-area-inset-top))",
-          paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))",
-          paddingLeft: "max(0.75rem, env(safe-area-inset-left))",
-          paddingRight: "max(0.75rem, env(safe-area-inset-right))",
+          paddingTop: "max(var(--pad), env(safe-area-inset-top))",
+          paddingBottom: "max(var(--pad), env(safe-area-inset-bottom))",
+          paddingLeft: "max(var(--pad), env(safe-area-inset-left))",
+          paddingRight: "max(var(--pad), env(safe-area-inset-right))",
         }}
       >
         <div className="flex min-w-0 items-start [grid-area:story]">
@@ -77,13 +91,13 @@ export default function WorldApp() {
         <div className="flex min-w-0 items-start justify-end [grid-area:stats]">
           <Readouts />
         </div>
-        <div className="flex min-w-0 items-end [grid-area:move]">
+        <div className="@container flex min-w-0 items-end [grid-area:move] compact:group-data-[mode=build]/world:hidden">
           <MovePad />
         </div>
         <div className="flex min-w-0 items-end justify-center [grid-area:build]">
           <BuildBar />
         </div>
-        <div className="flex min-w-0 items-end justify-end [grid-area:world]">
+        <div className="flex min-w-0 items-end justify-end [grid-area:world] compact:group-data-[mode=build]/world:hidden">
           <WorldControls />
         </div>
       </div>
@@ -109,13 +123,11 @@ function LoadingVeil() {
         {status === "error" ? (
           <>
             <p className="mt-2 text-[15px] leading-snug text-pine/80">{error}</p>
-            <div className="mt-4 flex justify-center gap-2">
-              <button type="button" onClick={() => window.location.reload()} className="min-h-11 rounded-2xl bg-pine px-4 font-bold text-paper">
+            {/* No link out to Marble here: a child stays inside the app (CLAUDE.md, section 11). */}
+            <div className="mt-4 flex justify-center">
+              <button type="button" onClick={() => window.location.reload()} className="min-h-11 rounded-2xl bg-pine px-5 font-bold text-paper">
                 Try again
               </button>
-              <a href={WORLD.marbleUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center rounded-2xl bg-white/70 px-4 font-bold">
-                Open on Marble
-              </a>
             </div>
           </>
         ) : (
