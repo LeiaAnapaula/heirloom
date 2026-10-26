@@ -190,7 +190,7 @@ function createStoryteller() {
     report(IDLE);
   }
 
-  /** Read the current moment's line. Stops by itself when the camera sets off somewhere else. */
+  /** Read the current moment's line. Stops by itself when the camera sets off somewhere else or the postcard opens. */
   function line(id: MomentId, onRun: (r: Run) => void) {
     stop();
     report = onRun;
@@ -208,7 +208,7 @@ function createStoryteller() {
     let wasFlying = hud.get().flying;
     unsubscribe = hud.subscribe(() => {
       const s = hud.get();
-      if (s.moment !== id || (s.flying && !wasFlying)) finish();
+      if (s.postcardOpen || s.moment !== id || (s.flying && !wasFlying)) finish();
       wasFlying = s.flying;
     });
     report({ kind: "line", moment: id });
@@ -248,10 +248,13 @@ function createStoryteller() {
     const halt = () => finish(false);
     end = halt;
 
-    // The child takes over by going somewhere the tour did not ask for.
+    // The child takes over by walking or looking around themselves, or by going somewhere the
+    // tour did not ask for. Opening the postcard ends the story too, so nothing talks over it.
+    const steer = hud.get().steer;
     unsubscribe = hud.subscribe(() => {
       if (over) return;
       const s = hud.get();
+      if (s.postcardOpen || s.steer !== steer) return finish(false);
       if (phase === "fly") {
         if (!s.flying) {
           if (s.moment === expected) rouse();
@@ -304,11 +307,21 @@ function unlockSpeech() {
 const [firstName, ...rest] = GRANDPA.name.split(" ");
 const otherNames = rest.join(" ");
 
+/** The `compact` screen shape from globals.css: where the card is a chip that opens. */
+const COMPACT = "(max-width: 639px), (max-height: 500px)";
+function watchCompact(onChange: () => void) {
+  const mq = window.matchMedia(COMPACT);
+  mq.addEventListener("change", onChange);
+  return () => mq.removeEventListener("change", onChange);
+}
+const isCompact = () => window.matchMedia(COMPACT).matches;
+
 export default function GrandpaCard() {
   const momentId = useHud((s) => s.moment);
   const speaking = useHud((s) => s.speaking);
   const ready = useHud((s) => s.status === "ready");
   const speech = useSyncExternalStore(noSubscribe, hasSpeech, () => true);
+  const compact = useSyncExternalStore(watchCompact, isCompact, () => false);
   const [teller] = useState(createStoryteller);
   const [run, setRun] = useState<Run>(IDLE);
   const [open, setOpen] = useState(false); // phones: the chip opens to show the line
@@ -316,6 +329,13 @@ export default function GrandpaCard() {
   const [scroller, more] = useMoreBelow<HTMLDivElement>(momentId);
 
   useEffect(() => () => teller.dispose(), [teller]);
+
+  // While Grandpa's words are open on a phone, the rest of the HUD makes room for them.
+  const storyOpen = open && compact;
+  useEffect(() => {
+    actions.setStoryOpen(storyOpen);
+    return () => actions.setStoryOpen(false);
+  }, [storyOpen]);
 
   // Chrome fills in its voice list a moment after the page starts; ask early so it is there on the first tap.
   useEffect(() => {
@@ -349,9 +369,13 @@ export default function GrandpaCard() {
   const playLabel = touring ? "Stop the story" : "Play the story";
   const words = "font-display text-[17px] leading-[1.55] roomy:[@media(min-height:821px)]:text-[18px]";
 
+  // A phone held sideways has no height to spare in the row, so the open card floats over the
+  // move pad and takes the screen's height instead.
+  const floating = "short:absolute short:z-20 short:w-[min(340px,45vw)] short:max-h-[calc(100svh-1.5rem)]";
+
   return (
     <Panel
-      className={`flex w-full flex-col p-2 compact:max-h-[33svh] roomy:max-h-[min(62svh,560px)] roomy:max-w-[380px] roomy:p-4 lg:max-w-none ${open ? "compact:pb-2.5" : ""}`}
+      className={`flex w-full flex-col p-2 compact:max-h-[33svh] roomy:max-h-[min(62svh,560px)] roomy:max-w-[380px] roomy:p-4 lg:max-w-none ${open ? `compact:pb-2.5 ${floating}` : ""}`}
       aria-label={`${GRANDPA.name}, telling ${GRANDPA.title}`}
       role="region"
     >
@@ -375,14 +399,14 @@ export default function GrandpaCard() {
             </span>
           </span>
           {/* The name wraps onto two lines when the chip is narrow, only "Grandpa" stays when it is
-              narrower, and on the smallest phones the portrait says it alone; with room, the current
-              part shows under it. */}
+              narrower, and once even that word would be cut off the portrait says it alone; with
+              room, the current part shows under it. */}
           <span className="@container min-w-0 flex-1">
-            <span className="line-clamp-2 font-display text-[16px] leading-[1.1] font-semibold @max-[72px]:text-[13.5px] @max-[50px]:sr-only">
+            <span className="line-clamp-2 font-display text-[16px] leading-[1.1] font-semibold @max-[72px]:text-[13.5px] @max-[60px]:sr-only">
               {firstName}
               <span className="@max-[72px]:hidden"> {otherNames}</span>
             </span>
-            <span className="hidden truncate text-[12.5px] leading-snug font-bold text-pine/65 @min-[112px]:block">
+            <span className="hidden truncate text-[12.5px] leading-snug font-bold text-pine/80 @min-[112px]:block">
               {part ?? moment?.label ?? GRANDPA.title}
             </span>
           </span>
@@ -397,7 +421,7 @@ export default function GrandpaCard() {
         <Portrait speaking={speaking} className="h-[60px] w-[60px]" />
         <div className="min-w-0">
           <p className="font-display text-[19px] leading-tight font-semibold">{GRANDPA.name}</p>
-          <p className="mt-0.5 text-[13px] leading-snug font-bold text-pine/65">Telling: {GRANDPA.title}</p>
+          <p className="mt-0.5 text-[13px] leading-snug font-bold text-pine/80">Telling: {GRANDPA.title}</p>
         </div>
       </div>
 
@@ -429,7 +453,7 @@ export default function GrandpaCard() {
               </>
             ) : (
               <p className={words} style={SOFT}>
-                Tap a number to hear Grandpa&rsquo;s story.
+                Tap a number to go to that part of Grandpa&rsquo;s story.
               </p>
             )}
           </div>
@@ -486,7 +510,7 @@ function useMoreBelow<T extends HTMLElement>(page: unknown) {
 /** Which part of the story the tour is on: small dots and "Part 2 of 4". */
 function TourProgress({ index }: { index: number }) {
   return (
-    <p className="flex min-h-11 items-center gap-2 px-1 text-[13px] font-bold text-pine/70">
+    <p className="flex min-h-11 items-center gap-2 px-1 text-[13px] font-bold text-pine/80">
       <span aria-hidden className="flex gap-1">
         {MOMENTS.map((m, i) => (
           <span
@@ -504,7 +528,7 @@ function TourProgress({ index }: { index: number }) {
   );
 }
 
-/** Grandpa, drawn small and warm: white hair and mustache under a flat cap, a moss cardigan. */
+/** A soft square: stop. */
 function StopIcon({ className = "h-5 w-5" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden>

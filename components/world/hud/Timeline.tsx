@@ -98,15 +98,16 @@ export default function Timeline() {
     actions.flyTo(id);
   };
 
-  // Phones and narrow screens name one stop, once, under the track.
+  // Phones and narrow screens name one stop, once, under the track: a build the child just
+  // tapped first (the camera usually still sits at a story moment), then where they are or are going.
   const target = flying && pending ? pending : moment;
   const picked = pieces.find((p) => p.id === selected);
   let caption: { text: string; n?: number; quiet?: boolean };
-  if (target) {
+  if (picked && !flying) caption = { text: buildName(picked, owner) };
+  else if (target) {
     const i = MOMENTS.findIndex((m) => m.id === target);
     caption = { text: MOMENTS[i].label, n: i + 1 };
-  } else if (picked) caption = { text: buildName(picked, owner) };
-  else caption = { text: "Tap a number to go there", quiet: true };
+  } else caption = { text: "Tap a number to go there", quiet: true };
 
   return (
     <div ref={box} className="flex w-full min-w-0 justify-center">
@@ -143,7 +144,7 @@ export default function Timeline() {
                     {wide && (
                       <span
                         className={`line-clamp-2 text-center text-[12.5px] leading-[1.15] font-bold transition-colors duration-200 motion-reduce:transition-none ${
-                          soft ? "text-pine/45" : isCurrent ? "text-pine" : "text-pine/70 group-hover:text-pine"
+                          soft ? "text-pine/45" : isCurrent ? "text-pine" : "text-pine/80 group-hover:text-pine"
                         }`}
                       >
                         {m.label}
@@ -157,7 +158,7 @@ export default function Timeline() {
             {folded > 0 && (
               <li className="relative flex shrink-0 justify-center" style={{ width: slot }}>
                 {recent.length > 0 && <PlankBit />}
-                <span className="relative z-10 mt-[9px] grid h-[26px] min-w-[34px] place-items-center rounded-full bg-white px-2 text-[13px] font-extrabold text-pine/70 shadow-[0_0_0_2px_rgb(138_90_59/0.3)]">
+                <span className="relative z-10 mt-[9px] grid h-[26px] min-w-[34px] place-items-center rounded-full bg-white px-2 text-[13px] font-extrabold text-pine/80 shadow-[0_0_0_2px_rgb(138_90_59/0.3)]">
                   <span aria-hidden>+{folded}</span>
                   <span className="sr-only">
                     {folded} more {folded === 1 ? "thing" : "things"} you built before these
@@ -194,13 +195,15 @@ export default function Timeline() {
                         <BuildPicture kind={piece.kind} className={wide ? "h-[26px] w-[26px]" : "h-6 w-6"} />
                       </span>
                     </span>
+                    {/* A long first name is cut short on its own so it never runs into the next stop
+                        and the thing they built still shows. */}
                     {wide && (
                       <span
-                        className={`line-clamp-2 text-center text-[12.5px] leading-[1.15] font-bold ${
-                          isPicked ? "text-pine" : "text-pine/70 group-hover:text-pine"
+                        className={`line-clamp-2 w-full text-center text-[12.5px] leading-[1.15] font-bold ${
+                          isPicked ? "text-pine" : "text-pine/80 group-hover:text-pine"
                         }`}
                       >
-                        {name}
+                        <span className="inline-block max-w-full truncate align-top">{owner}</span> {buildOf(piece.kind).noun}
                       </span>
                     )}
                   </button>
@@ -212,7 +215,7 @@ export default function Timeline() {
           {!wide && (
             <p
               className={`mt-0.5 flex items-center justify-center gap-1.5 truncate px-1 text-center text-[14px] leading-5 font-bold ${
-                caption.quiet ? "text-pine/60" : "text-pine"
+                caption.quiet ? "text-pine/80" : "text-pine"
               }`}
             >
               {caption.n !== undefined && (

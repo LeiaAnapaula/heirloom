@@ -83,6 +83,9 @@ function PostcardDialog() {
     });
     return () => {
       cancelAnimationFrame(frame);
+      // However it closes (Escape skips the blur), a name left as "Mia-" is finished, so the HUD never shows "Mia-'s bridge".
+      const typed = hud.get().childName;
+      if (finishName(typed) !== typed) actions.setChildName(finishName(typed));
       if (opener?.isConnected) opener.focus({ preventScroll: true });
     };
   }, []);

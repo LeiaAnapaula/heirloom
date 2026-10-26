@@ -284,3 +284,13 @@ export function disposeObject(o: THREE.Object3D): void {
     }
   });
 }
+
+/**
+ * Let go of the shared materials when the world closes. Each one remembers the renderer
+ * that drew it, so keeping them would keep the old renderer and its WebGL context alive.
+ * The next world makes fresh ones.
+ */
+export function disposeSharedMaterials(): void {
+  materials.forEach((m) => m.dispose());
+  materials.clear();
+}

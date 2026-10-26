@@ -117,6 +117,18 @@ body {
   border-radius: 14px;
 }
 
+/*
+  A panel that is itself the button (the phone's "Where you are" chip) sits straight on the world,
+  where pine alone disappears against a night sky. A band of paper on both sides of the ring keeps
+  it two-tone on any scene; the panel's own shadows stay as they were.
+*/
+.heirloom .hud-panel:focus-visible {
+  box-shadow:
+    0 0 0 9px rgb(238 241 232 / 0.92),
+    0 1px 0 rgb(255 255 255 / 0.6) inset,
+    0 10px 30px -12px rgb(20 30 24 / 0.45);
+}
+
 /* One paper look for every HUD panel: frosted, so the world stays visible behind it. */
 .hud-panel {
   background: rgb(238 241 232 / 0.86);

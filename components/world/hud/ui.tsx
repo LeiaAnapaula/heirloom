@@ -1,6 +1,6 @@
 "use client";
 
-import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, ComponentProps, ReactNode } from "react";
 
 /**
  * The few building blocks every HUD panel shares, so the whole HUD reads as one
@@ -8,7 +8,7 @@ import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
  * and small key hints for keyboards.
  */
 
-export function Panel({ className = "", children, ...rest }: HTMLAttributes<HTMLDivElement>) {
+export function Panel({ className = "", children, ...rest }: ComponentProps<"div">) {
   return (
     <div {...rest} className={`hud-panel pointer-events-auto rounded-[20px] ${className}`}>
       {children}
@@ -37,7 +37,7 @@ export function HudButton({ active, primary, round, className = "", children, ..
     <button
       type="button"
       {...rest}
-      className={`pointer-events-auto inline-flex select-none items-center text-[15px] font-bold transition-[background-color,transform] duration-150 active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 ${shape} ${look} ${className}`}
+      className={`pointer-events-auto inline-flex select-none items-center text-[15px] font-bold transition-[background-color,transform] duration-150 active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 aria-disabled:cursor-not-allowed aria-disabled:opacity-45 ${shape} ${look} ${className}`}
     >
       {children}
     </button>
@@ -47,7 +47,7 @@ export function HudButton({ active, primary, round, className = "", children, ..
 /** A key hint like "R", shown only where there is a real keyboard. */
 export function Kbd({ children }: { children: ReactNode }) {
   return (
-    <kbd className="hidden min-w-5 rounded-md border border-pine/25 bg-white/70 px-1.5 py-px text-center font-ui text-[11px] font-bold leading-4 text-pine/75 [@media(hover:hover)_and_(pointer:fine)]:inline-block">
+    <kbd className="hidden min-w-5 rounded-md border border-pine/25 bg-white/70 px-1.5 py-px text-center font-ui text-[11px] font-bold leading-4 text-pine/80 [@media(hover:hover)_and_(pointer:fine)]:inline-block">
       {children}
     </kbd>
   );

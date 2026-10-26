@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { buildOf, momentOf } from "../config";
 import { useHud } from "../store";
 import { BuildPicture, Icon } from "./icons";
@@ -123,7 +123,7 @@ function Compass({ small = false }: { small?: boolean }) {
         {letters.map((c) => (
           <span
             key={c.letter}
-            className={`absolute top-1/2 left-1/2 font-ui leading-none font-extrabold ${TURNING} ${c.letter === "N" ? "text-geranium" : "text-pine/70"}`}
+            className={`absolute top-1/2 left-1/2 font-ui leading-none font-extrabold ${TURNING} ${c.letter === "N" ? "text-geranium" : "text-pine/80"}`}
             style={{
               fontSize: small ? 9 : 11,
               transform: `translate(-50%, -50%) rotate(${c.at}deg) translateY(${-radius}px) rotate(${turn - c.at}deg)`,
@@ -171,7 +171,7 @@ function Nearest() {
       <Icon.pin className="mt-px h-[18px] w-[18px] shrink-0 text-river" />
       <span>
         <span className="font-bold">{momentOf(moment).label},</span>{" "}
-        <span className="whitespace-nowrap font-bold text-river tabular-nums">{away(distance)}</span>
+        <span className="whitespace-nowrap font-bold text-[#395a6b] tabular-nums">{away(distance)}</span>
       </span>
     </p>
   );
@@ -220,12 +220,12 @@ function Measure() {
           {stretch ? (
             <>
               <p className="text-[18px] leading-tight font-extrabold">{plural(length, stretch.unit)}</p>
-              <p className="text-[13px] font-bold text-pine/70">{meters(length * stretch.unitM)} m long</p>
+              <p className="text-[13px] font-bold text-pine/80">{meters(length * stretch.unitM)} m long</p>
             </>
           ) : (
             <>
               <p className="text-[16px] leading-tight font-extrabold">{build.label}</p>
-              <p className="text-[13px] font-bold text-pine/70">
+              <p className="text-[13px] font-bold text-pine/80">
                 {meters(w)} m wide, {meters(h)} m tall
               </p>
             </>
@@ -237,12 +237,12 @@ function Measure() {
         {valid ? (
           <>
             <Icon.place className="h-4 w-4 shrink-0 text-river" />
-            <span className="text-river">{distance === null ? "Ready to place" : `${meters(distance)} m away`}</span>
+            <span className="text-[#395a6b]">{distance === null ? "Ready to place" : `${meters(distance)} m away`}</span>
           </>
         ) : (
           <>
             <Icon.close className="h-4 w-4 shrink-0 text-geranium" />
-            <span className="text-geranium">Point at the ground</span>
+            <span className="text-[#933428]">Point at the ground</span>
           </>
         )}
       </p>
@@ -270,7 +270,7 @@ function Sharpening() {
     const pct = Math.round(sharpening * 100);
     return (
       <div className="mt-3">
-        <p className="text-[12px] font-bold text-pine/70 tabular-nums">Sharper world loading, {pct}%</p>
+        <p className="text-[12px] font-bold text-pine/80 tabular-nums">Sharper world loading, {pct}%</p>
         <div
           role="progressbar"
           aria-label="Sharper world loading"
@@ -286,8 +286,8 @@ function Sharpening() {
   }
   if (landed) {
     return (
-      <p className="mt-3 flex items-center gap-1.5 text-[12px] font-bold text-leaf motion-safe:animate-[notice_2.6s_ease_forwards]">
-        <Icon.sparkle className="h-3.5 w-3.5" />
+      <p className="mt-3 flex items-center gap-1.5 text-[12px] font-bold text-[#4f6e42] motion-safe:animate-[notice_2.6s_ease_forwards]">
+        <Icon.sparkle className="h-3.5 w-3.5 text-leaf" />
         Full detail
       </p>
     );
@@ -330,7 +330,7 @@ function ChipExplore() {
   if (!moment || distance === null) {
     return <ChipText top={`Facing ${headingWord(heading)}`} />;
   }
-  return <ChipText top={momentOf(moment).label} bottom={away(distance)} tone="text-river" />;
+  return <ChipText top={momentOf(moment).label} bottom={away(distance)} tone="text-[#395a6b]" />;
 }
 
 function ChipBuild() {
@@ -341,9 +341,9 @@ function ChipBuild() {
   const build = buildOf(tool);
   const stretch = build.stretch;
   const top = stretch ? plural(length, stretch.unit) : build.label;
-  if (!valid) return <ChipText top={top} bottom="Point at ground" tone="text-geranium" />;
+  if (!valid) return <ChipText top={top} bottom="Point at ground" tone="text-[#933428]" />;
   const bottom = stretch ? `${meters(length * stretch.unitM)} m long` : distance === null ? "Ready" : `${meters(distance)} m away`;
-  return <ChipText top={top} bottom={bottom} tone="text-river" />;
+  return <ChipText top={top} bottom={bottom} tone="text-[#395a6b]" />;
 }
 
 function ChipText({ top, bottom, tone = "" }: { top: string; bottom?: string; tone?: string }) {
@@ -369,9 +369,57 @@ function StatsChip() {
   const [open, setOpen] = useState(false);
   const card = useId();
   const chip = useRef<HTMLButtonElement>(null);
+  const wrap = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+
+  // Grandpa's words come first: when they open, the card gets out of their way.
+  const storyOpen = useHud((s) => s.storyOpen);
+  const [storySeen, setStorySeen] = useState(storyOpen);
+  if (storySeen !== storyOpen) {
+    setStorySeen(storyOpen);
+    if (storyOpen) setOpen(false);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    // A tap anywhere else, the world included, puts the card away.
+    const onDown = (e: PointerEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown, true);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  // On a phone held upright the card would drop over the story path; it opens below it instead.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const box = wrap.current;
+      const el = panel.current;
+      if (!box || !el) return;
+      el.style.top = "";
+      const path = document.querySelector('nav[aria-label="Story path"]');
+      const p = (path?.closest(".hud-panel") ?? path)?.getBoundingClientRect();
+      const c = el.getBoundingClientRect();
+      if (p && p.width > 0 && c.left < p.right && c.right > p.left && c.top < p.bottom && c.bottom > p.top) {
+        el.style.top = `${p.bottom - box.getBoundingClientRect().top + 8}px`;
+      }
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [open]);
 
   return (
     <div
+      ref={wrap}
       className="relative lg:hidden"
       onKeyDown={(e) => {
         if (e.key !== "Escape" || !open) return;
@@ -398,7 +446,7 @@ function StatsChip() {
         </span>
       </button>
       {open && (
-        <Panel id={card} role="region" aria-label="Where you are" className="absolute top-[calc(100%+8px)] right-0 z-10 w-[min(272px,calc(100vw-24px))] p-3">
+        <Panel ref={panel} id={card} role="region" aria-label="Where you are" className="absolute top-[calc(100%+8px)] right-0 z-10 w-[min(272px,calc(100vw-24px))] p-3">
           <StatsCard />
         </Panel>
       )}

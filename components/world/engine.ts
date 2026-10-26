@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
 import { MOMENTS, WORLD, buildOf, momentOf, type BuildKind, type MomentId, type TimeOfDay } from "./config";
 import { actions, hud, registerWorld, type HudState, type Piece } from "./store";
-import { disposeObject, makeGhost, makePiece, makeSelectionRing, tintGhost } from "./pieces";
+import { disposeObject, disposeSharedMaterials, makeGhost, makePiece, makeSelectionRing, tintGhost } from "./pieces";
 
 /**
  * The 3D world: Grandpa's Marble world drawn with Spark, the child's pieces on top,
@@ -453,9 +453,10 @@ export function startWorld({ container, quality }: StartOptions): () => void {
   const flyBase = new Float32Array(FLIES * 3);
   const flyGeo = new THREE.BufferGeometry();
   flyGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(FLIES * 3), 3));
+  const flyDot = glowTexture();
   const flies = new THREE.Points(
     flyGeo,
-    new THREE.PointsMaterial({ color: 0xffd98a, size: 0.09, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }),
+    new THREE.PointsMaterial({ color: 0xffd98a, map: flyDot, size: 0.14, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }),
   );
   flies.renderOrder = 15;
   flies.visible = false;
@@ -474,7 +475,9 @@ export function startWorld({ container, quality }: StartOptions): () => void {
 
   function applyTime(t: TimeOfDay) {
     const tint = TINTS[t];
-    for (const m of [proxy, shown]) if (m) m.recolor.setHex(tint.splat);
+    // Spark multiplies the splats' own sRGB colors by recolor as is, so the tint goes in
+    // unconverted; through three's color management night would come out far too dark.
+    for (const m of [proxy, shown]) if (m) m.recolor.setHex(tint.splat, THREE.LinearSRGBColorSpace);
     (scene.background as THREE.Color).setHex(tint.sky);
     hemi.intensity = tint.hemi;
     sun.intensity = tint.sun;
@@ -501,6 +504,7 @@ export function startWorld({ container, quality }: StartOptions): () => void {
     const ms = still.matches ? 1 : Math.min(2600, 900 + dist * 120 + Math.abs(dy) * 300);
     flight = { from: { position: pose.position.clone(), yaw: pose.yaw, pitch: pose.pitch }, to, start: performance.now(), ms, moment: id };
     look.vx = look.vy = 0;
+    turnLeft = 0; // a turn still queued from the buttons would swing the view away on arrival
     hud.set({ flying: true });
   }
 
@@ -532,15 +536,30 @@ export function startWorld({ container, quality }: StartOptions): () => void {
   const look = { vx: 0, vy: 0 }; // leftover spin after a flick, radians per second
   const pointers = new Map<number, { x: number; y: number; sx: number; sy: number; t: number }>();
   let pinch: number | null = null;
+  let multi = false; // a second finger came down during this touch, so lifting the last one is not a tap
   let turnLeft = 0; // radians still to turn from the turn buttons
   const pad = new THREE.Vector3(); // held movement from the on-screen pad
   const keys = new Set<string>();
 
+  // Lets the story tour know the child is moving or looking around on their own. A few
+  // times a second is plenty, and it keeps a drag from waking every HUD listener.
+  let lastSteer = -Infinity;
+  function steered() {
+    const now = performance.now();
+    if (now - lastSteer < 250) return;
+    lastSteer = now;
+    actions.steered();
+  }
+
   function onPointerDown(e: PointerEvent) {
+    // Right and middle clicks do nothing in the world (the context menu is off, so a piece would appear unasked).
+    if (e.pointerType === "mouse" && e.button !== 0) return;
     canvas.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now() });
     look.vx = look.vy = 0;
+    turnLeft = 0; // grabbing the world stops a turn from the buttons too
     cancelFlight();
+    if (pointers.size >= 2) multi = true;
     if (pointers.size === 2) pinch = spread();
   }
 
@@ -569,9 +588,12 @@ export function startWorld({ container, quality }: StartOptions): () => void {
       lastMoveT = now;
       look.vx = (dx * LOOK_SPEED) / dt;
       look.vy = (dy * LOOK_SPEED) / dt;
+      // A tap wobbles a little; past TAP_SLOP the child is really looking around.
+      if (Math.hypot(e.clientX - p.sx, e.clientY - p.sy) >= TAP_SLOP) steered();
     } else if (pointers.size === 2 && pinch !== null) {
       // Pinch out walks forward, pinch in walks back.
       const s = spread();
+      if (s !== pinch) steered();
       walk(0, 0, (s - pinch) * 0.02);
       pinch = s;
     }
@@ -582,10 +604,12 @@ export function startWorld({ container, quality }: StartOptions): () => void {
     const p = pointers.get(e.pointerId);
     pointers.delete(e.pointerId);
     if (pointers.size < 2) pinch = null;
+    const wasMulti = multi;
+    if (pointers.size === 0) multi = false;
     if (!p) return;
     if (performance.now() - lastMoveT > 80) look.vx = look.vy = 0; // held still before letting go: no spin
     const moved = Math.hypot(e.clientX - p.sx, e.clientY - p.sy);
-    if (moved < TAP_SLOP && performance.now() - p.t < TAP_MS && pointers.size === 0) {
+    if (moved < TAP_SLOP && performance.now() - p.t < TAP_MS && pointers.size === 0 && !wasMulti) {
       look.vx = look.vy = 0;
       tap(e.clientX, e.clientY);
     }
@@ -612,6 +636,7 @@ export function startWorld({ container, quality }: StartOptions): () => void {
   function onWheel(e: WheelEvent) {
     e.preventDefault();
     cancelFlight();
+    steered();
     walk(0, 0, -e.deltaY * 0.01);
   }
 
@@ -643,6 +668,7 @@ export function startWorld({ container, quality }: StartOptions): () => void {
     if (MOVE_KEYS[e.code] || e.code === "ArrowLeft" || e.code === "ArrowRight") {
       keys.add(e.code);
       cancelFlight();
+      steered();
       e.preventDefault();
       return;
     }
@@ -653,7 +679,9 @@ export function startWorld({ container, quality }: StartOptions): () => void {
       if (e.key === "Enter") e.preventDefault();
       return;
     }
-    const tool = buildByKey(e.key);
+    // The key's place, not its letter: on a French keyboard the key printed 1 sends "&".
+    const digit = /^(?:Digit|Numpad)([1-8])$/.exec(e.code)?.[1];
+    const tool = digit ? buildByKey(digit) : null;
     if (tool) return actions.pickTool(tool);
     switch (e.code) {
       case "KeyB":
@@ -696,16 +724,20 @@ export function startWorld({ container, quality }: StartOptions): () => void {
     pad.set(0, 0, 0);
   }
 
-  canvas.addEventListener("pointerdown", onPointerDown);
-  canvas.addEventListener("pointermove", onPointerMove);
-  canvas.addEventListener("pointerup", onPointerUp);
-  canvas.addEventListener("pointercancel", onPointerUp);
-  canvas.addEventListener("pointerleave", onPointerLeave);
-  canvas.addEventListener("wheel", onWheel, { passive: false });
-  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-  window.addEventListener("keydown", onKeyDown);
-  window.addEventListener("keyup", onKeyUp);
-  window.addEventListener("blur", onBlur);
+  // One signal takes every listener away at teardown. The canvas ones matter most: they
+  // hold on to the whole world, so leaving them would keep it all in memory.
+  const listening = new AbortController();
+  const signal = listening.signal;
+  canvas.addEventListener("pointerdown", onPointerDown, { signal });
+  canvas.addEventListener("pointermove", onPointerMove, { signal });
+  canvas.addEventListener("pointerup", onPointerUp, { signal });
+  canvas.addEventListener("pointercancel", onPointerUp, { signal });
+  canvas.addEventListener("pointerleave", onPointerLeave, { signal });
+  canvas.addEventListener("wheel", onWheel, { passive: false, signal });
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault(), { signal });
+  window.addEventListener("keydown", onKeyDown, { signal });
+  window.addEventListener("keyup", onKeyUp, { signal });
+  window.addEventListener("blur", onBlur, { signal });
 
   const fwd = new THREE.Vector3();
   const right = new THREE.Vector3();
@@ -726,6 +758,7 @@ export function startWorld({ container, quality }: StartOptions): () => void {
     const home = startPose();
     flight = { from: { position: pose.position.clone(), yaw: pose.yaw, pitch: pose.pitch }, to: home, start: performance.now(), ms: still.matches ? 1 : 1400, moment: MOMENTS[0].id };
     look.vx = look.vy = 0;
+    turnLeft = 0;
     hud.set({ flying: true });
   }
 
@@ -752,16 +785,17 @@ export function startWorld({ container, quality }: StartOptions): () => void {
         if (m) mv.add(new THREE.Vector3(...m));
       }
       if (mv.lengthSq() > 0) {
-        const speed = WALK_SPEED * (keys.has("ShiftLeft") || keys.has("ShiftRight") ? 2 : 1);
         if (Math.hypot(mv.x, mv.z) > 1) {
           const l = Math.hypot(mv.x, mv.z);
           mv.x /= l;
           mv.z /= l;
         }
-        walk(mv.x * speed * dt, mv.y * speed * 0.6 * dt, mv.z * speed * dt);
+        walk(mv.x * WALK_SPEED * dt, mv.y * WALK_SPEED * 0.6 * dt, mv.z * WALK_SPEED * dt);
       }
       const turnKeys = (keys.has("ArrowLeft") ? 1 : 0) - (keys.has("ArrowRight") ? 1 : 0);
       if (turnKeys) pose.yaw += turnKeys * 1.6 * dt;
+      // A key or the pad held down keeps the child walking, so the tour keeps hearing about it.
+      if (mv.lengthSq() > 0 || turnKeys) steered();
       if (turnLeft !== 0) {
         const step = Math.sign(turnLeft) * Math.min(Math.abs(turnLeft), 2.4 * dt);
         pose.yaw += step;
@@ -798,11 +832,14 @@ export function startWorld({ container, quality }: StartOptions): () => void {
     }
     if (ring) (ring.material as THREE.MeshBasicMaterial).opacity = 0.65 + 0.3 * Math.sin(elapsed.t * 4);
 
+    // With reduced motion the markers stop bobbing and the fireflies hold still.
+    const drift = still.matches ? 0 : elapsed.t;
+
     // Story markers bob, and the one you're at rests.
     const s = hud.get();
     for (const [id, sprite] of markerSprites) {
       const m = momentOf(id);
-      sprite.position.y = m.focus[1] + Math.sin(elapsed.t * 1.8 + m.focus[0]) * 0.08;
+      sprite.position.y = m.focus[1] + Math.sin(drift * 1.8 + m.focus[0]) * 0.08;
       sprite.material.opacity = s.moment === id ? 0.35 : s.visited.includes(id) ? 0.7 : 1;
       const d = camera.position.distanceTo(sprite.position);
       sprite.scale.setScalar(Math.max(0.5, Math.min(1.6, d * 0.09)));
@@ -813,13 +850,13 @@ export function startWorld({ container, quality }: StartOptions): () => void {
       for (let i = 0; i < FLIES; i++) {
         pos.setXYZ(
           i,
-          flyBase[i * 3] + Math.sin(elapsed.t * 0.6 + i) * 0.5,
-          flyBase[i * 3 + 1] + Math.sin(elapsed.t * 0.9 + i * 1.7) * 0.25,
-          flyBase[i * 3 + 2] + Math.cos(elapsed.t * 0.5 + i * 0.7) * 0.5,
+          flyBase[i * 3] + Math.sin(drift * 0.6 + i) * 0.5,
+          flyBase[i * 3 + 1] + Math.sin(drift * 0.9 + i * 1.7) * 0.25,
+          flyBase[i * 3 + 2] + Math.cos(drift * 0.5 + i * 0.7) * 0.5,
         );
       }
       pos.needsUpdate = true;
-      (flies.material as THREE.PointsMaterial).opacity = 0.7 + 0.3 * Math.sin(elapsed.t * 3);
+      (flies.material as THREE.PointsMaterial).opacity = 0.7 + 0.3 * Math.sin(drift * 3);
     }
 
     if (ghost) ghost.rotation.y = facingDeg(s.tool, s.rotation) * DEG;
@@ -854,11 +891,14 @@ export function startWorld({ container, quality }: StartOptions): () => void {
       hud.set({ readouts: { heightM, headingDeg, nearest } });
     }
     // Standing at a moment's spot and looking its way counts as being there. The
-    // current moment holds on until you look well away, so close views don't flicker.
+    // current moment holds on until you look well away, so close views don't flicker,
+    // but a spot that is clearly closer takes over: the spots sit close together.
     if (!flight) {
       const current = s.moment ? momentOf(s.moment) : null;
-      if (current && viewGap(current) < 1.6) return;
+      const held = current ? viewGap(current) : Infinity;
       const best = MOMENTS.map((m) => ({ m, gap: viewGap(m) })).sort((a, b) => a.gap - b.gap)[0];
+      if (best && best.gap < 1 && best.m.id !== current?.id && best.gap + 0.4 < held) return arrive(best.m.id);
+      if (held < 1.6) return;
       if (best && best.gap < 1) arrive(best.m.id);
       else if (current) hud.set({ moment: null });
     }
@@ -894,17 +934,27 @@ export function startWorld({ container, quality }: StartOptions): () => void {
     flyTo,
     setMove: (x, y, z) => {
       pad.set(x, y, z);
-      if (x || y || z) cancelFlight();
+      if (x || y || z) {
+        cancelFlight();
+        steered();
+      }
     },
     turn: (deg) => {
       cancelFlight();
-      turnLeft += deg * DEG;
+      steered();
+      // With reduced motion the view turns at once instead of easing round.
+      if (still.matches) {
+        pose.yaw += deg * DEG;
+        ghostDirty = true;
+      } else {
+        turnLeft += deg * DEG;
+      }
     },
     placeAtCenter: () => {
       hover = null;
-      const hit = hitWorld(new THREE.Vector2(0, 0));
-      if (hit) place(new THREE.Vector2(0, 0));
-      else hud.set({ ghost: { valid: false, distanceM: null } });
+      ghostDirty = true; // the ghost goes back to the reticle
+      // place() casts the one ray itself, and says "Pick a spot on the ground." when it finds none.
+      place(new THREE.Vector2(0, 0));
     },
     home: goHome,
     snapshot: (maxWidth = 960) => {
@@ -959,22 +1009,24 @@ export function startWorld({ container, quality }: StartOptions): () => void {
     registerWorld(null);
     unsubscribe();
     ro.disconnect();
-    window.removeEventListener("keydown", onKeyDown);
-    window.removeEventListener("keyup", onKeyUp);
-    window.removeEventListener("blur", onBlur);
+    listening.abort();
     for (const g of meshes.values()) disposeObject(g);
     if (ghost) disposeObject(ghost);
     if (ring) disposeObject(ring);
+    disposeSharedMaterials();
     markerSprites.forEach((s) => {
       s.material.map?.dispose();
       s.material.dispose();
     });
     flyGeo.dispose();
+    flyDot.dispose();
     (flies.material as THREE.Material).dispose();
     proxy?.dispose();
     if (shown && shown !== proxy) shown.dispose();
     spark.dispose();
     renderer.dispose();
+    // Hand the WebGL context back now; browsers only allow a few at once.
+    renderer.forceContextLoss();
     canvas.remove();
     delete (window as unknown as { __heirloom?: unknown }).__heirloom;
   };
@@ -1011,4 +1063,19 @@ function markerTexture(n: number): THREE.CanvasTexture {
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
+}
+
+/** A soft round glow, so each firefly reads as a little light and not a square. */
+function glowTexture(): THREE.CanvasTexture {
+  const size = 32;
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const g = c.getContext("2d")!;
+  const glow = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+  glow.addColorStop(0, "rgba(255, 255, 255, 1)");
+  glow.addColorStop(0.35, "rgba(255, 255, 255, 0.6)");
+  glow.addColorStop(1, "rgba(255, 255, 255, 0)");
+  g.fillStyle = glow;
+  g.fillRect(0, 0, size, size);
+  return new THREE.CanvasTexture(c);
 }

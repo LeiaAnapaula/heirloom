@@ -285,5 +285,5 @@ function Keys({ keys }: { keys: string[] }) {
 }
 
 function Hint({ children }: { children: ReactNode }) {
-  return <span className="whitespace-nowrap font-ui text-[12px] font-bold text-pine/70">{children}</span>;
+  return <span className="whitespace-nowrap font-ui text-[12px] font-bold text-pine/80">{children}</span>;
 }

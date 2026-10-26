@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode, type WheelEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode, type Ref, type RefObject, type WheelEvent } from "react";
 import { BUILDS, buildOf, type Build } from "../config";
 import { actions, useHud } from "../store";
 import { BuildPicture, Icon } from "./icons";
@@ -57,6 +57,7 @@ export default function BuildBar() {
   const pieces = useHud((s) => s.pieces);
   const sent = useHud((s) => s.sent);
   const fine = useFinePointer();
+  const explore = useRef<HTMLButtonElement>(null);
 
   const building = mode === "build";
   const build = buildOf(tool);
@@ -75,12 +76,8 @@ export default function BuildBar() {
 
   return (
     <div className="@container w-full max-w-[760px] min-w-0">
-      <Panel
-        className="w-full p-1.5 font-ui @min-[720px]:p-2"
-        // A mouse click on the bar must not leave a button focused, or the next Enter
-        // would press that button again instead of placing a piece. Keyboard focus is untouched.
-        onMouseDown={(e) => e.preventDefault()}
-      >
+      {/* WorldApp's HUD grid keeps a mouse click from focusing any button here, so Enter still places. */}
+      <Panel className="w-full p-1.5 font-ui @min-[720px]:p-2">
         <div
           className={`grid items-center gap-x-2 gap-y-1.5 [grid-template-columns:auto_minmax(0,1fr)] ${
             building
@@ -88,14 +85,14 @@ export default function BuildBar() {
               : "[grid-template-areas:'seg_hint'_'bar_bar']"
           }`}
         >
-          <ModeSwitch building={building} />
+          <ModeSwitch building={building} exploreRef={explore} />
 
           <div className={`flex min-w-0 items-center gap-2 [grid-area:hint] ${building ? "@min-[720px]:px-1" : ""}`}>
             {/* In explore mode a tapped piece can still be removed; on a narrow bar the button takes the hint's place. */}
             <Hint hint={hint} building={building} yield={!building && !!selected} />
             {!building && selected && (
               <span className="ml-auto">
-                <RemoveButton selected count={count} labelClass="inline" />
+                <RemoveButton selected count={count} labelClass="inline" focusAfter={explore} />
               </span>
             )}
           </div>
@@ -122,7 +119,7 @@ function hintFor(o: { building: boolean; fine: boolean; valid: boolean; selected
   const tap = o.fine ? "Click" : "Tap";
   if (o.selected) {
     return o.building
-      ? { long: "You picked one. Remove this takes it away.", short: `${tap} the trash can to take it away.`, tone: "picked" }
+      ? { long: `You picked one. ${tap} Remove this to take it away.`, short: `${tap} the trash can to take it away.`, tone: "picked" }
       : { long: "You picked one.", short: "You picked one.", tone: "picked" };
   }
   if (!o.building) {
@@ -162,10 +159,10 @@ function Hint({ hint, building, yield: give }: { hint: HintText; building: boole
 
 /* ---------------- Explore or Build ---------------- */
 
-function ModeSwitch({ building }: { building: boolean }) {
+function ModeSwitch({ building, exploreRef }: { building: boolean; exploreRef: Ref<HTMLButtonElement> }) {
   return (
     <div role="group" aria-label="Explore or build" className="relative flex rounded-2xl bg-white/40 ring-1 ring-pine/10 [grid-area:seg]">
-      <Segment on={!building} label="Explore" onClick={() => actions.setMode("explore")}>
+      <Segment ref={exploreRef} on={!building} label="Explore" onClick={() => actions.setMode("explore")}>
         <Icon.explore className="h-5 w-5 shrink-0" />
       </Segment>
       <Segment on={building} label="Build" onClick={() => actions.setMode("build")}>
@@ -176,15 +173,28 @@ function ModeSwitch({ building }: { building: boolean }) {
   );
 }
 
-function Segment({ on, label, onClick, children }: { on: boolean; label: string; onClick: () => void; children: ReactNode }) {
+function Segment({
+  on,
+  label,
+  onClick,
+  children,
+  ref,
+}: {
+  on: boolean;
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+  ref?: Ref<HTMLButtonElement>;
+}) {
   return (
     <button
+      ref={ref}
       type="button"
       aria-pressed={on}
       aria-keyshortcuts="B"
       onClick={onClick}
       className={`inline-flex h-11 items-center gap-1.5 rounded-2xl px-2.5 text-[15px] font-bold transition-[background-color,color] duration-150 select-none motion-reduce:transition-none @min-[340px]:px-3 ${
-        on ? "bg-honey text-pine shadow-[inset_0_0_0_2px_rgb(44_58_50/0.85)]" : "text-pine/70 hover:bg-white/75 hover:text-pine"
+        on ? "bg-honey text-pine shadow-[inset_0_0_0_2px_rgb(44_58_50/0.85)]" : "text-pine/80 hover:bg-white/75 hover:text-pine"
       }`}
     >
       <span className="hidden @min-[330px]:contents">{children}</span>
@@ -247,7 +257,7 @@ function BuildActions({
             </HudButton>
             <span role="status" className="w-10 text-center leading-none tabular-nums @min-[720px]:w-12">
               <span className="block text-[18px] font-extrabold">{length}</span>
-              <span className="block text-[10.5px] font-bold text-pine/70 @min-[720px]:text-[11px]"> {stretch.unit}s</span>
+              <span className="block text-[10.5px] font-bold text-pine/80 @min-[720px]:text-[11px]"> {stretch.unit}s</span>
             </span>
             <HudButton
               round
@@ -283,7 +293,18 @@ function BuildActions({
   );
 }
 
-function RemoveButton({ selected, count, labelClass }: { selected: boolean; count: number; labelClass: string }) {
+function RemoveButton({
+  selected,
+  count,
+  labelClass,
+  focusAfter,
+}: {
+  selected: boolean;
+  count: number;
+  labelClass: string;
+  /** Where a keyboard user's focus goes when this button disappears with the piece it removed. */
+  focusAfter?: RefObject<HTMLButtonElement | null>;
+}) {
   const label = selected ? "Remove this" : "Undo last";
   return (
     <HudButton
@@ -291,8 +312,14 @@ function RemoveButton({ selected, count, labelClass }: { selected: boolean; coun
       aria-label={label}
       title={`${label} (X)`}
       aria-keyshortcuts="X"
-      disabled={count === 0}
-      onClick={() => actions.removePiece()}
+      // Dimmed, not disabled, when there is nothing to take away: a disabled button drops focus to the page.
+      aria-disabled={count === 0 || undefined}
+      onClick={(e) => {
+        if (count === 0) return;
+        const focused = document.activeElement === e.currentTarget;
+        actions.removePiece();
+        if (focused) focusAfter?.current?.focus();
+      }}
     >
       <Icon.remove className={`h-5 w-5 shrink-0 ${selected ? "text-geranium" : ""}`} />
       <span className={`whitespace-nowrap ${labelClass}`}>{label}</span>
@@ -312,12 +339,36 @@ function KeySticker({ k }: { k: string }) {
 
 /* ---------------- the hotbar ---------------- */
 
+const SLOT = 64;
+const SLOT_GAP = 4;
+const BAR_PAD = 6;
+
+/**
+ * How wide each slot is. When the eight don't all fit, the slots grow or shrink a
+ * little so part of the next one always shows at the end of the bar: a picture cut
+ * in half tells a child "there's more this way" better than a fade alone.
+ */
+function slotWidth(view: number): number {
+  const n = BUILDS.length;
+  if (view >= 2 * BAR_PAD + n * SLOT + (n - 1) * SLOT_GAP) return SLOT;
+  const peek = (view - BAR_PAD) % (SLOT + SLOT_GAP);
+  if (peek >= 0.4 * SLOT && peek <= 0.85 * SLOT) return SLOT;
+  // Whole slots plus 0.6 of the next, as close to the usual size as the room allows.
+  let best = 0;
+  for (let k = 2; k < n; k++) {
+    const w = (view - BAR_PAD - k * SLOT_GAP) / (k + 0.6);
+    if (w >= 56 && w <= 78 && (!best || Math.abs(w - SLOT) < Math.abs(best - SLOT))) best = w;
+  }
+  return best ? Math.floor(best) : SLOT;
+}
+
 function Hotbar({ building, tool, invite }: { building: boolean; tool: Build["kind"]; invite: boolean }) {
   const scroller = useRef<HTMLDivElement>(null);
   const wheel = useRef(0);
   const [edges, setEdges] = useState({ start: false, end: false });
+  const [slot, setSlot] = useState(SLOT);
 
-  // Soft fades on the sides that have more slots to scroll to.
+  // Soft fades on the sides that have more slots to scroll to, and slots sized to the bar.
   useEffect(() => {
     const box = scroller.current;
     if (!box) return;
@@ -325,6 +376,7 @@ function Hotbar({ building, tool, invite }: { building: boolean; tool: Build["ki
       const start = box.scrollLeft > 2;
       const end = box.scrollLeft + box.clientWidth < box.scrollWidth - 2;
       setEdges((e) => (e.start === start && e.end === end ? e : { start, end }));
+      setSlot(slotWidth(box.clientWidth));
     };
     const ro = new ResizeObserver(update);
     ro.observe(box);
@@ -356,7 +408,7 @@ function Hotbar({ building, tool, invite }: { building: boolean; tool: Build["ki
     if (!d) return;
     wheel.current += d;
     if (Math.abs(wheel.current) < 30) return;
-    box.scrollBy({ left: Math.sign(wheel.current) * 68, behavior: reducedMotion() ? "auto" : "smooth" });
+    box.scrollBy({ left: Math.sign(wheel.current) * (slot + SLOT_GAP), behavior: reducedMotion() ? "auto" : "smooth" });
     wheel.current = 0;
   }
 
@@ -377,14 +429,14 @@ function Hotbar({ building, tool, invite }: { building: boolean; tool: Build["ki
     >
       <div className="flex w-max gap-1 p-1.5">
         {BUILDS.map((b) => (
-          <Slot key={b.kind} build={b} picked={building && b.kind === tool} invite={invite && b.kind === "bridge"} />
+          <Slot key={b.kind} build={b} width={slot} picked={building && b.kind === tool} invite={invite && b.kind === "bridge"} />
         ))}
       </div>
     </div>
   );
 }
 
-function Slot({ build, picked, invite }: { build: Build; picked: boolean; invite: boolean }) {
+function Slot({ build, width, picked, invite }: { build: Build; width: number; picked: boolean; invite: boolean }) {
   return (
     <button
       type="button"
@@ -393,7 +445,8 @@ function Slot({ build, picked, invite }: { build: Build; picked: boolean; invite
       aria-label={build.label}
       aria-keyshortcuts={build.key}
       onClick={() => actions.pickTool(build.kind)}
-      className={`group relative flex h-16 w-16 shrink-0 snap-start flex-col items-center justify-end gap-0.5 rounded-2xl pb-1.5 transition-[background-color,box-shadow,translate,scale] duration-150 select-none active:scale-95 motion-reduce:transition-none ${
+      style={{ width }}
+      className={`group relative flex h-16 shrink-0 snap-start flex-col items-center justify-end gap-0.5 rounded-2xl pb-1.5 transition-[background-color,box-shadow,translate,scale] duration-150 select-none active:scale-95 motion-reduce:transition-none ${
         picked
           ? "bg-honey shadow-[inset_0_0_0_2px_rgb(44_58_50/0.85),0_8px_16px_-10px_rgb(94_60_38/0.9)] motion-safe:-translate-y-0.5"
           : "bg-white/55 shadow-[inset_0_-2px_0_rgb(44_58_50/0.07)] hover:bg-white/85"

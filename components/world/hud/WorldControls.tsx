@@ -21,7 +21,7 @@ const TIME_ICONS: Record<TimeOfDay, (typeof Icon)[keyof typeof Icon]> = {
 export default function WorldControls() {
   return (
     <Panel className="grid gap-1.5 p-1.5 [grid-template-areas:'times'_'screen'] sm:[grid-template-areas:'times_screen'] sm:items-center lg:w-full lg:max-w-[280px] lg:items-center lg:gap-y-1 lg:p-2 lg:[grid-template-areas:'label_screen'_'times_times'] lg:[grid-template-columns:1fr_auto]">
-      <p aria-hidden className="hidden pl-1.5 font-ui text-[13px] font-bold text-pine/70 [grid-area:label] lg:block">
+      <p aria-hidden className="hidden pl-1.5 font-ui text-[13px] font-bold text-pine/80 [grid-area:label] lg:block">
         Time of day
       </p>
       <TimePicker />
