@@ -1,5 +1,5 @@
 // Two first calls: Gemini 4 Argon directly, then the Antigravity managed agent with Argon in its sandbox.
-// Run: npx tsx scripts/argon-hello.ts
+// Run: npx tsx scripts/argon-hello.mts
 import { gemini } from "./gemini-env";
 
 const client = gemini();

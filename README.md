@@ -55,7 +55,7 @@ It is built, tested (357 unit tests, end-to-end runs in headless Chrome) and com
 Everything in this repo was written on Oct 25, 2026 during the hackathon (first commit 11:40 AM, see `git log`).
 
 **Track: More Dimensions.** One-shot AI art breaks lessons: a counting page that shows 5 planets when the
-lesson says 4 teaches the wrong number. The **World Builder** (`scripts/build-world.ts`) makes one
+lesson says 4 teaches the wrong number. The **World Builder** (`scripts/build-world.mts`) makes one
 **Antigravity managed-agent** call with **Gemini 4 Argon** in a Google-hosted sandbox. Argon:
 
 1. builds the lesson page as a living Three.js world (`scene.html`),
@@ -69,8 +69,8 @@ The verified world, its `report.json` (score per round) and a screenshot per rou
 number, and the book lights each planet as it counts.
 
 ```bash
-npx tsx scripts/argon-hello.ts          # first calls: Argon, then the managed agent
-npx tsx scripts/build-world.ts 4        # build and verify the 4-planet counting page
+npx tsx scripts/argon-hello.mts          # first calls: Argon, then the managed agent
+npx tsx scripts/build-world.mts 4        # build and verify the 4-planet counting page
 ```
 
 ## Run it

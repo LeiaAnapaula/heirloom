@@ -1,6 +1,6 @@
-// The same loop as build-world.ts, with the checks run on this machine: Gemini 4 Argon writes the
+// The same loop as build-world.mts, with the checks run on this machine: Gemini 4 Argon writes the
 // world, headless Chrome checks the lesson, Argon sees the failures and the screenshot and fixes it.
-// Run: npx tsx scripts/build-world-local.ts [planets=4]
+// Run: npx tsx scripts/build-world-local.mts [planets=4]
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright-core";

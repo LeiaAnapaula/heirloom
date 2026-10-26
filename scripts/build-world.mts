@@ -1,6 +1,6 @@
 // World Builder: one Antigravity managed-agent call. Gemini 4 Argon builds a lesson page as a
 // living 3D world, writes a headless-Chrome check of the lesson, and loops until it passes.
-// Run: npx tsx scripts/build-world.ts [planets=4]
+// Run: npx tsx scripts/build-world.mts [planets=4]
 import { execSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
