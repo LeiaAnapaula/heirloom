@@ -88,10 +88,16 @@ writeFileSync(tar, Buffer.from(bytes as unknown as Uint8Array));
 execSync(`tar -xf "${tar}" -C "${OUT}" && rm "${tar}"`);
 // Flatten if the archive kept the folder name.
 execSync(`cd "${OUT}" && if [ -d world ]; then cp -R world/. . && rm -rf world; fi; rm -rf node_modules package-lock.json`);
-writeFileSync(path.join("public", "worlds", "current.json"), JSON.stringify({ planets: N, path: `/worlds/count-${N}/scene.html` }, null, 2));
 console.log(`${since()}  saved to ${OUT}`);
+let passed = false;
 try {
-  console.log(readFileSync(path.join(OUT, "report.json"), "utf8"));
+  const text = readFileSync(path.join(OUT, "report.json"), "utf8");
+  console.log(text);
+  const r = JSON.parse(text) as { planets?: number; passed?: boolean };
+  passed = r.passed === true && r.planets === N;
 } catch {
-  console.log("(no report.json in the download)");
+  console.log("(no readable report.json in the download)");
 }
+// Only a world that passed every check goes into the book.
+if (passed) writeFileSync(path.join("public", "worlds", "current.json"), JSON.stringify({ planets: N, path: `/worlds/count-${N}/scene.html` }, null, 2));
+console.log(`${since()}  ${passed ? "PASSED: the counting page now uses this world" : "not passing: the book keeps its drawn planets"}`);

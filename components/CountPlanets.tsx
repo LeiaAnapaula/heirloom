@@ -58,7 +58,7 @@ export default function CountPlanets({ config, active, ctx }: InteractionProps<C
   const flashKey = useRef(0);
   const sleep = useSleep();
 
-  // A living 3D world for this page, built and verified by Gemini 4 Argon (scripts/build-world.ts).
+  // A living 3D world for this page, built and verified by Gemini 4 Argon (scripts/build-world.mts).
   // Used only when it was verified for this lesson's number; otherwise the drawn planets stay.
   const [world, setWorld] = useState<string | null>(null);
   const [worldReady, setWorldReady] = useState(false);
