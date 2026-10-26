@@ -1,0 +1,1049 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Heirloom</title>
+  <meta name="description" content="Grandpa tells it. The child builds in it. A world made together, across generations." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,400..700,100;1,9..144,400..700,100&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    /*
+      Heirloom demo: one full loop on one page, in the order it happens.
+        1. Grandpa tells a story          (the story strip)
+        2. it becomes a world             (a Marble world by World Labs)
+        3. the child adds something       (the build panel, and a pin on the world)
+        4. a message goes back to Grandpa (the postcard)
+      Colors come from the world itself: river mist, pine, sunlit wood, yellow flowers, red geraniums.
+    */
+    :root {
+      --mist: #eef1e8;      /* page: morning mist over the river */
+      --mist-deep: #e1e7d9; /* quiet surfaces */
+      --ink: #2c3a32;       /* text: pine in shade */
+      --ink-soft: #55655b;  /* secondary text */
+      --wood: #8a5a3b;      /* the village's wooden houses */
+      --wood-deep: #6b4329;
+      --honey: #e3a83d;     /* the yellow flowers on the hill: the one warm accent */
+      --honey-soft: #f6e2b5;
+      --river: #5f8296;     /* the river */
+      --geranium: #c8574a;  /* red flowers in the windows, used sparingly */
+      --geranium-ink: #a8443a; /* the same red, dark enough for small text */
+      --card: #fbfcf8;
+      --paper: #fffdf6;     /* the postcard */
+      --focus: #2c3a32;     /* focus ring: pine, about 10:1 on mist */
+      --radius-lg: 28px;
+      --radius-md: 18px;
+      --shadow: 0 18px 50px rgba(44, 58, 50, 0.16), 0 2px 6px rgba(44, 58, 50, 0.08);
+      --serif: "Fraunces", Georgia, serif;
+      --sans: "Nunito", ui-rounded, system-ui, sans-serif;
+      --gutter: 24px;
+      --ar: 1.5;            /* the world picture's width / height, updated from the picture itself */
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      font-size: 18px;
+      line-height: 1.6;
+      color: var(--ink);
+      background:
+        radial-gradient(900px 500px at 85% -10%, rgba(227, 168, 61, 0.18), transparent 60%),
+        radial-gradient(800px 600px at -10% 20%, rgba(95, 130, 150, 0.14), transparent 60%),
+        var(--mist);
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; }
+    :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+    [tabindex="-1"]:focus:not(:focus-visible) { outline: none; }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+    }
+
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 0 var(--gutter); }
+
+    /* A small label that ties each part of the page to its step in the loop. */
+    .eyebrow {
+      margin: 0 0 8px; font-family: var(--sans); font-weight: 800; font-size: 13px; line-height: 1.4;
+      letter-spacing: 0.08em; text-transform: uppercase; color: var(--wood);
+    }
+
+    /* ---------- Header ---------- */
+    header.site {
+      display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+      padding: 16px 0 0;
+    }
+    .wordmark { font-family: var(--serif); font-variation-settings: "SOFT" 100; font-weight: 600; font-size: 28px; letter-spacing: -0.01em; }
+    .wordmark span { color: var(--honey); }
+    .childline { font-family: var(--serif); font-style: italic; color: var(--ink-soft); font-size: 17px; }
+
+    /* ---------- Intro: the headline, the loop, and step 1 (Grandpa's story) ---------- */
+    .intro {
+      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+      grid-template-areas: "hero strip" "loop loop";
+      column-gap: 44px; row-gap: 14px; align-items: end;
+      padding: 14px 0 0;
+    }
+    .hero { grid-area: hero; }
+    .hero h1 {
+      margin: 0;
+      font-family: var(--serif);
+      font-variation-settings: "SOFT" 100, "opsz" 144;
+      font-weight: 500;
+      font-size: clamp(40px, 4.2vw, 58px);
+      line-height: 1.03;
+      letter-spacing: -0.02em;
+    }
+    .hero h1 .line2 { display: block; color: var(--wood); }
+    .hero p { max-width: 42ch; margin: 14px 0 0; font-size: 18.5px; line-height: 1.55; color: var(--ink-soft); }
+
+    /* The loop: four steps that light up as the demo moves. */
+    .loop {
+      grid-area: loop;
+      list-style: none; margin: 0; padding: 0;
+      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;
+      counter-reset: step;
+    }
+    .loop li {
+      counter-increment: step;
+      position: relative;
+      display: flex; align-items: center;
+      padding: 10px 14px 10px 50px;
+      border-radius: var(--radius-md);
+      background: rgba(251, 252, 248, 0.55);
+      color: var(--ink-soft);
+      font-weight: 700; font-size: 15.5px; line-height: 1.3;
+      transition: background 400ms ease, color 400ms ease, box-shadow 400ms ease;
+    }
+    .loop li::before {
+      content: counter(step);
+      position: absolute; left: 13px; top: 50%; transform: translateY(-50%);
+      width: 26px; height: 26px; border-radius: 50%;
+      display: grid; place-items: center;
+      font-size: 14px; font-weight: 800;
+      background: var(--mist-deep); color: var(--ink-soft);
+      transition: background 400ms ease, color 400ms ease;
+    }
+    .loop li.done { background: var(--card); color: var(--ink); box-shadow: 0 6px 20px rgba(44, 58, 50, 0.08); }
+    .loop li.done::before { background: var(--honey); color: #4a3220; content: "\2713"; }
+    .loop li.now { background: var(--card); color: var(--ink); box-shadow: 0 0 0 2px var(--honey), 0 6px 20px rgba(44, 58, 50, 0.08); }
+    .loop li.now::before { background: var(--honey-soft); color: var(--wood-deep); }
+
+    /* Step 1: the opening of Grandpa's story, right where the page begins. */
+    .strip {
+      grid-area: strip;
+      position: relative;
+      padding: 18px 22px;
+      border-radius: var(--radius-lg);
+      background: var(--card);
+      box-shadow: 0 10px 30px rgba(44, 58, 50, 0.08);
+    }
+    .strip-body { display: flex; align-items: flex-start; gap: 16px; }
+    .avatar {
+      flex: none; width: 48px; height: 48px; border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #f3d9a6, #c99a5a);
+      display: grid; place-items: center;
+      font-family: var(--serif); font-weight: 600; font-size: 20px; line-height: 1; color: #5a3b1f;
+      box-shadow: 0 0 0 3px #fff, 0 4px 12px rgba(90, 59, 31, 0.22);
+    }
+    .avatar.sm { width: 28px; height: 28px; font-size: 14px; box-shadow: 0 0 0 2px #fff; }
+    .strip .opening, .strip .wish {
+      margin: 0; font-family: var(--serif); font-variation-settings: "SOFT" 100; font-size: 18.5px; line-height: 1.42;
+    }
+    .strip .opening { text-wrap: pretty; }
+    .strip .wish { margin-top: 6px; font-style: italic; color: var(--wood); }
+    .strip-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 18px; margin-top: 12px; }
+    .textlink { color: var(--ink-soft); font-weight: 700; font-size: 15px; text-underline-offset: 4px; border-radius: 6px; }
+    .textlink:hover { color: var(--ink); }
+
+    /* ---------- Step 2: the world ---------- */
+    .world {
+      position: relative; margin: 14px 0 0;
+      border-radius: var(--radius-lg); overflow: hidden;
+      background: var(--card);
+      box-shadow: var(--shadow);
+      isolation: isolate;
+      scroll-margin: 16px;
+    }
+    /* The picture box. Pins are placed in the picture's own coordinates (the stage),
+       so a pin stays on the river however the picture is cropped. */
+    .scene {
+      position: relative; aspect-ratio: 2 / 1; overflow: hidden;
+      container-type: size;
+      background: linear-gradient(180deg, #b9c9c0 0%, #9fb59b 55%, #6f8e6c 100%); /* shown while the picture loads */
+    }
+    .stage { position: absolute; inset: 0; }
+    @supports (width: 1cqw) {
+      .stage {
+        inset: auto;
+        width: max(100cqw, 100cqh * var(--ar));
+        height: max(100cqh, 100cqw / var(--ar));
+        left: calc((100cqw - max(100cqw, 100cqh * var(--ar))) / 2);
+        top: calc((100cqh - max(100cqh, 100cqw / var(--ar))) / 2);
+      }
+    }
+    .stage img, .stage svg.fallback { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: cover; }
+    .stage svg.fallback { display: none; }
+    .no-image .stage img { display: none; }
+    .no-image .stage svg.fallback { display: block; }
+    .world .veil {
+      position: absolute; inset: 0;
+      background: linear-gradient(180deg, rgba(20, 28, 24, 0) 48%, rgba(20, 28, 24, 0.64) 100%);
+      pointer-events: none;
+    }
+    /* The painted stand-in is lighter than the photo, so the veil works harder there. */
+    .no-image .world .veil {
+      background: linear-gradient(180deg, rgba(20, 28, 24, 0) 30%, rgba(20, 28, 24, 0.55) 62%, rgba(20, 28, 24, 0.82) 100%);
+    }
+    .pins-layer { z-index: 1; pointer-events: none; }
+
+    .world .caption {
+      position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+      display: flex; align-items: flex-end; justify-content: space-between; gap: 16px 24px; flex-wrap: wrap;
+      padding: 20px 26px;
+      color: #fff;
+    }
+    .world .caption > div:first-child { flex: 1 1 320px; min-width: 0; }
+    .world .caption .eyebrow { color: var(--honey-soft); margin-bottom: 4px; text-shadow: 0 1px 10px rgba(0, 0, 0, 0.35); }
+    .world .caption h2 {
+      margin: 0; font-family: var(--serif); font-variation-settings: "SOFT" 100; font-weight: 500;
+      font-size: clamp(24px, 3vw, 34px); line-height: 1.15; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.35);
+      text-wrap: balance;
+    }
+    .world .caption p.about { margin: 4px 0 0; font-size: 16px; text-shadow: 0 1px 10px rgba(0, 0, 0, 0.4); }
+    .world .actions { display: flex; gap: 12px; flex-wrap: wrap; }
+    .world .caption a:focus-visible { outline-color: #fff; }
+
+    /* A build on the world: a dot on its spot, and a little card with its drawing. */
+    .spot { position: absolute; left: var(--x); top: var(--y); width: 0; height: 0; }
+    .spot-dot {
+      position: absolute; left: -8px; top: -8px; width: 16px; height: 16px; border-radius: 50%;
+      background: var(--honey); box-shadow: 0 0 0 3px #fff, 0 3px 10px rgba(0, 0, 0, 0.35);
+    }
+    .spot-dot::after {
+      content: ""; position: absolute; inset: -3px; border-radius: 50%;
+      border: 2px solid #fff; opacity: 0;
+    }
+    .spot-tail {
+      position: absolute; left: -7px; top: -23px; width: 14px; height: 14px;
+      background: var(--card); transform: rotate(45deg); border-radius: 2px;
+    }
+    .pin {
+      position: absolute; left: 0; bottom: 16px;
+      translate: calc(-50% + var(--dx, 0px)) 0;
+      display: flex; align-items: center; gap: 8px;
+      width: max-content; max-width: 250px; max-width: min(250px, 58cqw);
+      padding: 6px 14px 6px 6px; border-radius: 16px;
+      background: var(--card); color: var(--ink);
+      font-weight: 800; font-size: 15px; line-height: 1.2;
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+      overflow-wrap: anywhere;
+    }
+    .pin svg { flex: none; width: 36px; height: 36px; }
+    .pin span { min-width: 0; }
+    .spot.below .pin { bottom: auto; top: 16px; }
+    .spot.below .spot-tail { top: 9px; }
+    .spot.fresh { opacity: 0; }
+    .spot.pop { animation: grow 750ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+    .spot.pop .spot-dot::after { animation: ring 1.3s ease-out 2; }
+
+    /* ---------- Buttons ---------- */
+    .btn {
+      appearance: none; border: 0; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 10px;
+      min-height: 52px; padding: 0 24px; border-radius: 999px;
+      font-family: var(--sans); font-weight: 800; font-size: 17px; text-decoration: none;
+      transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: var(--honey); color: #2b2113; box-shadow: 0 8px 22px rgba(227, 168, 61, 0.4); }
+    .btn-primary:hover { background: #eab24c; }
+    .btn-soft { min-height: 44px; padding: 0 18px; font-size: 16px; background: var(--mist-deep); color: var(--ink); }
+    .btn-soft:hover { background: #d6dfcc; }
+    .btn-soft.playing { background: var(--honey-soft); }
+    .btn svg { width: 20px; height: 20px; flex: none; }
+
+    /* ---------- Step 3: the whole story, and building, side by side ---------- */
+    .together { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 28px; align-items: start; margin: 40px 0 0; }
+    .panel { background: var(--card); border-radius: var(--radius-lg); padding: 32px; box-shadow: 0 10px 30px rgba(44, 58, 50, 0.07); scroll-margin: 16px; }
+    .panel h2 { margin: 0 0 6px; font-family: var(--serif); font-variation-settings: "SOFT" 100; font-weight: 600; font-size: 28px; line-height: 1.2; }
+    .panel .lede { margin: 0 0 22px; color: var(--ink-soft); font-size: 17px; }
+
+    .story .kind {
+      display: inline-block; margin-bottom: 14px; padding: 4px 12px; border-radius: 999px;
+      background: var(--honey-soft); color: var(--wood-deep); font-weight: 800; font-size: 14px;
+    }
+    .story blockquote {
+      margin: 0; font-family: var(--serif); font-variation-settings: "SOFT" 100; font-size: 21px; line-height: 1.6; color: var(--ink);
+    }
+    .story blockquote p { margin: 0 0 14px; }
+    .story blockquote .wish { color: var(--wood); font-style: italic; }
+    .story .from { display: flex; align-items: center; gap: 12px; margin-top: 18px; color: var(--ink-soft); font-size: 16px; }
+    .story .from .avatar { width: 44px; height: 44px; }
+
+    /* The child's choices: big cards with a drawing, one tap each. */
+    fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+    legend { font-weight: 800; margin-bottom: 12px; font-size: 17px; padding: 0; }
+    .choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .choice { position: relative; }
+    .choice input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+    .choice label {
+      position: relative;
+      display: flex; align-items: center; gap: 14px;
+      min-height: 92px; padding: 14px 16px; border-radius: var(--radius-md);
+      background: var(--mist); cursor: pointer;
+      box-shadow: inset 0 0 0 2px transparent;
+      transition: box-shadow 200ms ease, background 200ms ease;
+      font-weight: 800; font-size: 18px; line-height: 1.25;
+    }
+    .choice label small { display: block; font-weight: 600; font-size: 14px; color: var(--ink-soft); }
+    .choice label:hover { background: #e6ebde; }
+    .choice input:checked + label { background: var(--honey-soft); box-shadow: inset 0 0 0 2px var(--wood); }
+    .choice input:checked + label::after {
+      content: "\2713"; position: absolute; top: 8px; right: 10px;
+      width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+      background: var(--wood); color: #fff; font-size: 13px; font-weight: 800;
+    }
+    .choice input:focus-visible + label { outline: 3px solid var(--focus); outline-offset: 3px; }
+    .choice svg { flex: none; width: 60px; height: 60px; }
+
+    .field { margin: 22px 0 0; }
+    .field label { display: block; font-weight: 800; margin-bottom: 8px; font-size: 17px; }
+    .field input {
+      width: 100%; min-height: 56px; padding: 0 18px; border-radius: var(--radius-md);
+      border: 0; background: var(--mist); box-shadow: inset 0 0 0 2px #76877b;
+      font: 600 19px var(--sans); color: var(--ink);
+    }
+    .field input::placeholder { color: #6b7a70; }
+    .field input:focus { outline: 3px solid var(--focus); outline-offset: 3px; background: #fff; box-shadow: inset 0 0 0 2px var(--wood); }
+    .field input[aria-invalid="true"] { box-shadow: inset 0 0 0 2px var(--geranium-ink); }
+    .hint { min-height: 24px; margin: 10px 0 0; color: var(--geranium-ink); font-weight: 700; font-size: 15px; }
+    .add { width: 100%; justify-content: center; margin-top: 8px; font-size: 19px; min-height: 60px; }
+    .add[aria-disabled="true"] { opacity: 0.75; cursor: progress; }
+
+    /* ---------- Step 4: the postcard that goes back to Grandpa ---------- */
+    /* Clipped sideways so the envelope's flight can never widen the page. */
+    .letter-zone {
+      margin: 16px calc(-1 * var(--gutter)) 0; padding: 24px var(--gutter) 40px;
+      overflow: hidden; scroll-margin: 16px;
+    }
+    @supports (overflow: clip) { .letter-zone { overflow: visible; overflow-x: clip; } }
+    .letter-zone:empty { padding: 0; }
+    .letter-zone .eyebrow { max-width: 860px; margin: 0 auto 12px; }
+    .postcard {
+      position: relative; max-width: 860px; margin: 0 auto;
+      display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1fr);
+      border-radius: 22px; background: var(--paper); box-shadow: var(--shadow);
+      overflow-wrap: anywhere;
+      animation: rise 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+    .postcard:focus-visible { outline-offset: 5px; }
+    .pc-picture { padding: 22px; border-right: 2px dashed #e6dcc6; }
+    .thumb {
+      position: relative; aspect-ratio: var(--ar); overflow: hidden; container-type: size;
+      border-radius: 14px; background: #9fb59b;
+      box-shadow: 0 0 0 6px #fff, 0 6px 18px rgba(44, 58, 50, 0.18);
+      transform: rotate(-1.2deg);
+    }
+    .drawn {
+      position: absolute; left: var(--x); top: var(--y); width: 24%;
+      translate: -50% -62%;
+      filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 7px rgba(255, 255, 255, 0.85)) drop-shadow(0 3px 5px rgba(0, 0, 0, 0.25));
+      animation: drawIn 800ms cubic-bezier(0.22, 1, 0.36, 1) 250ms both;
+    }
+    .drawn svg { display: block; width: 100%; height: auto; }
+    .pc-place { margin: 14px 2px 0; color: var(--ink-soft); font-weight: 700; font-size: 14px; line-height: 1.4; }
+    .pc-words { padding: 24px 28px 22px 30px; }
+    .stamp { float: right; width: 52px; margin: -4px -6px 10px 14px; transform: rotate(4deg); }
+    .stamp svg { display: block; width: 100%; height: auto; }
+    .pc-to { margin: 0; font-weight: 800; color: var(--ink-soft); font-size: 15px; letter-spacing: 0.02em; }
+    .postcard .message {
+      margin: 8px 0 0; font-family: var(--serif); font-variation-settings: "SOFT" 100;
+      font-weight: 500; font-size: clamp(25px, 2.9vw, 32px); line-height: 1.2; color: var(--ink);
+    }
+    .postcard .echo { margin: 12px 0 0; font-family: var(--serif); font-style: italic; font-size: 19px; line-height: 1.4; color: var(--wood); }
+    .postcard .detail { margin: 10px 0 0; color: var(--ink-soft); font-size: 17px; line-height: 1.55; }
+    .postcard .sign { margin: 16px 0 0; font-family: var(--serif); font-style: italic; font-size: 23px; line-height: 1.3; color: var(--ink); }
+    .pc-foot {
+      grid-column: 1 / -1;
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 20px;
+      padding: 16px 24px 20px; border-top: 2px dashed #e6dcc6;
+    }
+    .status {
+      display: inline-flex; align-items: center; gap: 10px; padding: 7px 16px 7px 12px;
+      border-radius: 999px; background: var(--mist); color: var(--ink-soft); font-weight: 800; font-size: 15px;
+    }
+    .status .dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; animation: breathe 1.4s ease-in-out infinite; }
+    .status.sent { background: var(--honey-soft); color: var(--wood-deep); padding-left: 6px; animation: settle 500ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+    .closing { margin: 0; font-family: var(--serif); font-style: italic; font-size: 18px; color: var(--ink); }
+    .envelope {
+      position: absolute; top: -30px; right: 22px; z-index: 3;
+      width: 66px; height: 66px; pointer-events: none;
+    }
+    .envelope svg { display: block; width: 100%; height: 100%; }
+    .envelope.fly { animation: fly 1300ms cubic-bezier(0.45, 0, 0.2, 1) both; }
+
+    /* ---------- What we have built together ---------- */
+    .shelf { margin: 28px 0 0; }
+    .shelf h2 { margin: 0 0 14px; font-family: var(--serif); font-variation-settings: "SOFT" 100; font-weight: 600; font-size: 24px; }
+    .shelf ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 12px; }
+    .shelf li {
+      display: inline-flex; align-items: center; gap: 10px; max-width: 100%;
+      padding: 10px 16px 10px 10px; border-radius: 999px; background: var(--card);
+      font-weight: 800; box-shadow: 0 4px 14px rgba(44, 58, 50, 0.06);
+      overflow-wrap: anywhere;
+    }
+    .shelf li span { min-width: 0; }
+    .shelf li svg { flex: none; width: 34px; height: 34px; }
+    .shelf li.empty { padding-left: 0; background: none; box-shadow: none; color: var(--ink-soft); font-weight: 600; }
+    .startover { margin-top: 14px; background: none; border: 0; padding: 6px 2px; color: var(--ink-soft); font: 700 15px var(--sans); text-decoration: underline; text-underline-offset: 4px; cursor: pointer; border-radius: 6px; }
+    .startover:hover { color: var(--ink); }
+
+    footer.site { margin: 64px 0 0; padding: 28px 0 40px; border-top: 1px solid var(--mist-deep); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; color: var(--ink-soft); font-size: 16px; }
+    footer.site .promise { font-family: var(--serif); font-style: italic; color: var(--ink); }
+
+    @keyframes grow { 0% { opacity: 0; transform: scale(0.3); } 55% { opacity: 1; transform: scale(1.07); } 100% { opacity: 1; transform: scale(1); } }
+    @keyframes ring { 0% { opacity: 0.9; transform: scale(1); } 100% { opacity: 0; transform: scale(3.2); } }
+    @keyframes drawIn { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: none; } }
+    @keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+    @keyframes settle { from { transform: scale(0.94); } to { transform: none; } }
+    @keyframes breathe { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+    @keyframes fly {
+      0% { transform: translate(0, 0) rotate(0) scale(1); opacity: 1; }
+      50% { transform: translate(50px, -60px) rotate(10deg) scale(0.85); opacity: 1; }
+      100% { transform: translate(120px, -150px) rotate(18deg) scale(0.45); opacity: 0; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 1ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; scroll-behavior: auto !important; }
+    }
+
+    @media (max-width: 1023px) {
+      .intro { grid-template-columns: minmax(0, 1fr); grid-template-areas: "hero" "loop" "strip"; }
+    }
+    @media (max-width: 900px) {
+      .together { grid-template-columns: minmax(0, 1fr); }
+      .loop { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .scene { aspect-ratio: 16 / 10; }
+    }
+    @media (max-width: 680px) {
+      .postcard { grid-template-columns: minmax(0, 1fr); }
+      .pc-picture { border-right: 0; border-bottom: 2px dashed #e6dcc6; padding: 18px 18px 14px; }
+      .pc-words { padding: 20px 22px 18px; }
+    }
+    @media (max-width: 560px) {
+      :root { --gutter: 16px; }
+      body { font-size: 17px; }
+      header.site { flex-direction: column; gap: 2px; padding-top: 18px; }
+      .intro { padding-top: 22px; row-gap: 18px; }
+      .hero p { font-size: 18px; }
+      .loop { gap: 8px; }
+      .loop li { padding: 10px 10px 10px 40px; font-size: 14px; border-radius: 14px; }
+      .loop li::before { left: 9px; width: 22px; height: 22px; font-size: 12px; }
+      .strip { padding: 18px 18px 18px; }
+      .strip-body { gap: 12px; }
+      .strip .avatar { width: 40px; height: 40px; font-size: 18px; }
+      .strip .opening, .strip .wish { font-size: 18px; }
+      /* On phones the caption sits under the picture, so it never covers the river. */
+      .scene { aspect-ratio: 4 / 3; }
+      .world .veil { display: none; }
+      .world .caption { position: static; color: var(--ink); padding: 18px 20px 20px; }
+      .world .caption > div:first-child { flex-basis: 100%; }
+      .world .caption .eyebrow { color: var(--wood); text-shadow: none; }
+      .world .caption h2, .world .caption p.about { text-shadow: none; }
+      .world .caption p.about { color: var(--ink-soft); }
+      .world .caption a:focus-visible { outline-color: var(--focus); }
+      .world .actions { flex: 1 1 100%; }
+      .world .actions .btn { flex: 1 1 auto; width: 100%; justify-content: center; }
+      .pin { font-size: 13px; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 13px; }
+      .pin svg { width: 28px; height: 28px; }
+      .panel { padding: 24px 20px; }
+      .choices { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+      .choice label { min-height: 76px; }
+      .choice svg { width: 52px; height: 52px; }
+      .letter-zone { padding-top: 20px; }
+      .pc-foot { padding: 14px 18px 18px; }
+      .envelope { width: 56px; height: 56px; top: -26px; right: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="site">
+      <div class="wordmark">Heirloom<span>.</span></div>
+      <div class="childline">"The world Grandpa and I built."</div>
+    </header>
+
+    <main>
+      <div class="intro">
+        <section class="hero" aria-labelledby="headline">
+          <h1 id="headline">Grandpa tells it.<span class="line2">The child builds in it.</span></h1>
+          <p>Any story (a memory, a dream, something made up) becomes a world a grandchild can step into. What they build there goes back to Grandpa.</p>
+        </section>
+
+        <!-- The loop. Steps 1 and 2 tick as the story and the world come into view. -->
+        <ol class="loop" id="loop" role="list" aria-label="How it works">
+          <li data-step="1"><span class="sr-only">Step 1: </span>Grandpa tells a story<span class="sr-only state"></span></li>
+          <li data-step="2"><span class="sr-only">Step 2: </span>It becomes a world<span class="sr-only state"></span></li>
+          <li data-step="3"><span class="sr-only">Step 3: </span>The child adds something<span class="sr-only state"></span></li>
+          <li data-step="4"><span class="sr-only">Step 4: </span>It goes back to Grandpa<span class="sr-only state"></span></li>
+        </ol>
+
+        <!-- Step 1: how Grandpa's story begins, and what he always wished for. -->
+        <section class="strip" id="storyStrip" aria-labelledby="strip-title">
+          <h2 class="eyebrow" id="strip-title">Step 1 &middot; Grandpa tells a story</h2>
+          <div class="strip-body">
+            <span class="avatar" aria-hidden="true">G</span>
+            <div>
+              <p class="opening" id="opening"></p>
+              <p class="wish" id="wishLine"></p>
+              <div class="strip-actions">
+                <button class="btn btn-soft listen" id="listen" type="button" hidden>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+                  <span>Read it aloud</span>
+                </button>
+                <a class="textlink" href="#story">Read the whole story</a>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Step 2: the world. Marble does not allow embedding (its pages refuse to load inside other sites),
+           so the world is shown with its own preview picture and opens full screen in Marble. -->
+      <section class="world" id="world" aria-labelledby="world-title">
+        <div class="scene" id="scene">
+          <div class="stage" id="worldStage">
+            <img class="preview" id="worldPreview" alt="" />
+            <!-- The painted stand-in (WORLD.painting) is added here, in case the picture can't load. -->
+          </div>
+          <div class="veil"></div>
+          <div class="stage pins-layer" id="pins"></div>
+        </div>
+        <div class="caption">
+          <div>
+            <p class="eyebrow">Step 2 &middot; It becomes a world</p>
+            <h2 id="world-title"></h2>
+            <p class="about" id="worldAbout"></p>
+          </div>
+          <div class="actions">
+            <a class="btn btn-primary" id="stepIn" target="_blank" rel="noopener">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              Step into the world<span class="sr-only"> (opens Marble in a new tab)</span>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <div class="together">
+        <!-- Grandpa's whole story: the words that became the world. -->
+        <section class="panel story" id="story" aria-labelledby="story-title">
+          <span class="kind" id="storyKind"></span>
+          <h2 id="story-title">Grandpa's story</h2>
+          <blockquote id="storyText"></blockquote>
+          <div class="from"><span class="avatar" aria-hidden="true">G</span><span>Told by Grandpa</span></div>
+        </section>
+
+        <!-- Step 3: the child's part. Choose something, write your name, add it to the world. -->
+        <section class="panel build" id="build" aria-labelledby="build-title">
+          <p class="eyebrow">Step 3 &middot; The child adds something</p>
+          <h2 id="build-title" tabindex="-1">Add something to Grandpa's world</h2>
+          <p class="lede">Choose what to build. Grandpa will hear about it.</p>
+          <form id="buildForm" novalidate>
+            <fieldset>
+              <legend>What will you build?</legend>
+              <div class="choices" id="choices"></div>
+            </fieldset>
+            <div class="field">
+              <label for="childName">Your name</label>
+              <input id="childName" name="childName" type="text" autocomplete="off" autocapitalize="words" spellcheck="false" maxlength="20" placeholder="First name" aria-describedby="hint" />
+            </div>
+            <p class="hint" id="hint"></p>
+            <button class="btn btn-primary add" id="addBtn" type="submit">Add to the world</button>
+          </form>
+        </section>
+      </div>
+
+      <!-- Step 4: the postcard to Grandpa appears here after the child adds something. -->
+      <section class="letter-zone" id="letterZone" aria-label="Postcard to Grandpa"></section>
+
+      <section class="shelf" aria-labelledby="shelf-title">
+        <h2 id="shelf-title">What we've built together</h2>
+        <ul id="shelf"></ul>
+        <button class="startover" id="startOver" type="button" hidden>Start over</button>
+      </section>
+
+      <!-- The one place the page speaks up for screen readers. -->
+      <div class="sr-only" id="announce" role="status" aria-live="polite"></div>
+    </main>
+
+    <footer class="site">
+      <span class="promise">A world made together, one story at a time.</span>
+      <span>World made with Marble by World Labs</span>
+    </footer>
+  </div>
+
+  <script>
+    /* ------------------------------------------------------------------
+       Everything the page says lives here (WORLD, STORY, BUILDS, ICONS),
+       so a new family, story or world is a change to this block, not to
+       the code below.
+    ------------------------------------------------------------------ */
+    const WORLD = {
+      url: "https://marble.worldlabs.ai/world/7534e896-0dbd-45bb-909b-1e569741f8d6",
+      // Marble's own share picture for this world (1440 x 960).
+      preview: "https://cdn.marble.worldlabs.ai/7534e896-0dbd-45bb-909b-1e569741f8d6/59961c53-dc94-42a8-a1a7-cb8617e0f92c_sand_mpi/thumbnail_1440.webp",
+      aspect: 1.5, // width / height of the preview; build spots below are percentages of it
+      title: "Grandpa's village by the river",
+      about: "Made from his story, as a world you can walk through.",
+      alt: "Grandpa's village as a world: wooden houses on green hills, a path past yellow flowers, and a river running through the middle.",
+      // A painted stand-in for when the picture can't load (offline, or the link changes).
+      // Drawn on the same 1440 x 960 layout as the preview, so the build spots still line up.
+      painting: `<svg class="fallback" viewBox="0 0 1440 960" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <rect width="1440" height="960" fill="#cdd8cc"/><rect width="1440" height="300" fill="#bccabd"/>
+        <path d="M0 430C200 385 420 372 620 386S1000 360 1200 372 1400 340 1440 346V640H0Z" fill="#9fb2a4"/>
+        <path d="M0 70C90 62 170 118 230 172S310 290 340 340L0 370Z" fill="#5f7a55"/>
+        <g fill="#4f6a49"><circle cx="40" cy="110" r="52"/><circle cx="118" cy="146" r="56"/><circle cx="186" cy="196" r="50"/><circle cx="246" cy="258" r="44"/><circle cx="66" cy="226" r="62"/><circle cx="156" cy="268" r="54"/></g>
+        <path d="M0 336C160 338 320 380 480 420S720 470 900 508 1250 540 1440 500V960H0Z" fill="#7f9c6f"/>
+        <path d="M560 960C700 820 900 700 1100 622S1350 560 1440 544V960Z" fill="#93a16c"/>
+        <ellipse cx="770" cy="392" rx="46" ry="72" fill="#4f6a49"/>
+        <path d="M0 528C150 504 300 470 520 444L532 455C320 482 160 520 0 556Z" fill="#b08a5a"/>
+        <path d="M0 704C200 690 420 660 600 630S800 572 896 548L962 556C860 590 760 632 640 690S300 872 0 946Z" fill="#6f8fa0"/>
+        <path d="M80 790C220 760 360 720 470 690M160 860C300 820 420 780 540 732" stroke="#a9c1cc" stroke-width="5" stroke-linecap="round" fill="none" opacity=".6"/>
+        <g fill="#e3a83d"><circle cx="122" cy="408" r="8"/><circle cx="146" cy="400" r="7"/><circle cx="170" cy="410" r="8"/><circle cx="190" cy="402" r="6"/></g>
+        <g fill="#8a5a3b"><rect x="235" y="330" width="190" height="72"/><rect x="425" y="340" width="82" height="72"/><rect x="550" y="432" width="86" height="38"/><rect x="800" y="436" width="55" height="62"/><rect x="850" y="438" width="148" height="92"/><rect x="1020" y="458" width="170" height="92"/><rect x="1360" y="385" width="80" height="84"/></g>
+        <g fill="#6b4329"><path d="M215 346 330 245 445 346Z"/><path d="M413 352 465 282 517 352Z"/><path d="M538 442 595 395 648 442Z"/><path d="M793 442 826 404 862 442Z"/><path d="M838 446 925 368 1010 446Z"/><path d="M1008 466 1105 393 1200 466Z"/><path d="M1345 392 1440 312V392Z"/></g>
+        <g fill="#f6e2b5"><rect x="265" y="356" width="18" height="16"/><rect x="312" y="356" width="18" height="16"/><rect x="360" y="356" width="18" height="16"/><rect x="900" y="470" width="16" height="18"/><rect x="940" y="470" width="16" height="18"/><rect x="1110" y="488" width="16" height="16"/></g>
+        <g fill="#c8574a"><circle cx="270" cy="378" r="4"/><circle cx="318" cy="378" r="4"/><circle cx="366" cy="378" r="4"/><circle cx="908" cy="494" r="4"/><circle cx="948" cy="494" r="4"/><circle cx="1072" cy="486" r="6"/></g>
+      </svg>`,
+    };
+
+    const STORY = {
+      kind: "A memory",
+      // Optional: a recording of Grandpa telling it (for example "/audio/grandpa-river.mp3").
+      // When set, the button plays his real voice; when empty, the device reads the words aloud.
+      audio: "",
+      parts: [
+        "When I was a boy, our village sat on the bend of a slow green river. Every house was wooden, and in summer the windows were full of red flowers.",
+        "A little path climbed the hill past the yellow flowers. From the top you could see the lake shining, far away.",
+        "But there was no bridge. To visit my grandmother on the other side, we waited for old Pavel and his boat.",
+        { wish: true, text: "I always wished someone would build a bridge." },
+      ],
+    };
+
+    // What a child can add. Each one has a drawing, a spot on the world picture
+    // (x and y as percentages of the preview), and the postcard Grandpa receives.
+    const BUILDS = [
+      { id: "bridge", label: "A bridge", note: "across the river", noun: "bridge",
+        spot: { x: 47, y: 66.5 }, // over the river, middle bottom
+        message: (n) => `${n} built a bridge across your river!`,
+        echo: "You always wished someone would build one.",
+        detail: "Now you can walk to your grandmother's side of the village, no boat needed." },
+      { id: "garden", label: "A garden", note: "of yellow flowers", noun: "garden",
+        spot: { x: 17, y: 50 }, // on the path, on the left
+        message: (n) => `${n} planted a garden by your path!`,
+        detail: "Yellow flowers all the way up the hill, like the ones you remember." },
+      { id: "house", label: "A house", note: "next to yours", noun: "house",
+        spot: { x: 85, y: 54 }, // beside the houses on the right
+        message: (n) => `${n} built a little house next to yours!`,
+        detail: "Wooden, with red flowers in the windows, so you are neighbors now." },
+      { id: "treehouse", label: "A treehouse", note: "up on the hill", noun: "treehouse",
+        spot: { x: 12, y: 26 }, // in the trees on the left hill
+        message: (n) => `${n} built a treehouse on your hill!`,
+        detail: "From the top you can both see the lake shining, far away." },
+    ];
+
+    /* Small hand-drawn pictures, one per build. 64 x 64, warm and simple. */
+    const ICONS = {
+      bridge: `<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M4 46c10-4 18-4 28 0s18 4 28 0v8H4z" fill="#5f8296" opacity=".85"/><path d="M6 38c8-14 44-14 52 0" fill="none" stroke="#8a5a3b" stroke-width="5" stroke-linecap="round"/><path d="M4 38h56" stroke="#8a5a3b" stroke-width="4" stroke-linecap="round"/><path d="M18 30v8M32 27v11M46 30v8" stroke="#8a5a3b" stroke-width="3" stroke-linecap="round"/></svg>`,
+      garden: `<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M6 52c14-6 38-6 52 0v4H6z" fill="#7f9c6f"/><g stroke="#4f7a4a" stroke-width="3" stroke-linecap="round"><path d="M18 50V34M32 50V28M46 50V34"/></g><g fill="#e3a83d"><circle cx="18" cy="30" r="6"/><circle cx="32" cy="24" r="7"/><circle cx="46" cy="30" r="6"/></g><g fill="#fff3d6"><circle cx="18" cy="30" r="2"/><circle cx="32" cy="24" r="2.5"/><circle cx="46" cy="30" r="2"/></g></svg>`,
+      house: `<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M10 30 32 12l22 18" fill="none" stroke="#6b4329" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 29h34v25H15z" fill="#a8734e"/><path d="M27 54V41h10v13" fill="#6b4329"/><rect x="19" y="34" width="7" height="6" rx="1" fill="#f6e2b5"/><rect x="39" y="34" width="7" height="6" rx="1" fill="#f6e2b5"/><g fill="#c8574a"><circle cx="20" cy="42" r="2"/><circle cx="24" cy="42" r="2"/><circle cx="40" cy="42" r="2"/><circle cx="44" cy="42" r="2"/></g></svg>`,
+      treehouse: `<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="22" r="18" fill="#7f9c6f"/><circle cx="20" cy="28" r="10" fill="#6f8e5f"/><circle cx="45" cy="27" r="11" fill="#6f8e5f"/><path d="M29 56V34h6v22" fill="#6b4329"/><path d="M22 34l10-9 10 9" fill="none" stroke="#6b4329" stroke-width="3" stroke-linejoin="round"/><rect x="24" y="33" width="16" height="10" rx="1.5" fill="#a8734e"/><rect x="29" y="36" width="6" height="4" rx="1" fill="#f6e2b5"/><path d="M40 43v13M44 43v13M40 47h4M40 51h4" stroke="#8a5a3b" stroke-width="1.6"/></svg>`,
+      envelope: `<svg viewBox="0 0 84 84" aria-hidden="true"><rect x="10" y="22" width="64" height="44" rx="6" fill="#f6e2b5"/><path d="M12 25l30 22 30-22" fill="none" stroke="#8a5a3b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="62" cy="58" r="9" fill="#c8574a"/><path d="M58.5 57.5c0-2 2.6-2.8 3.5-.8.9-2 3.5-1.2 3.5.8 0 2.2-3.5 4.3-3.5 4.3s-3.5-2.1-3.5-4.3z" fill="#fff"/></svg>`,
+      stamp: `<svg viewBox="0 0 56 66" aria-hidden="true"><rect x="3" y="3" width="50" height="60" rx="2" fill="#fff" stroke="#d9cdb3" stroke-width="2.5" stroke-dasharray="3.5 3"/><rect x="9" y="9" width="38" height="48" rx="3" fill="#f6e2b5"/><circle cx="28" cy="25" r="7" fill="#e3a83d"/><path d="M11 50c6-9 11-12 17-12s11 3 17 12z" fill="#7f9c6f"/><path d="M11 53h34" stroke="#5f8296" stroke-width="3"/></svg>`,
+    };
+
+    /* ------------------------------------------------------------------
+       The code below reads the blocks above.
+    ------------------------------------------------------------------ */
+    const $ = (id) => document.getElementById(id);
+    const escape = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const byId = (id) => BUILDS.find((b) => b.id === id);
+    const cleanName = (s) => String(s).trim().replace(/\s+/g, " ").slice(0, 20);
+    const buildTitle = (b) => `${b.name}'s ${byId(b.id).noun}`; // one helper for pins, shelf and messages
+    const partText = (p) => (typeof p === "string" ? p : p.text);
+
+    /* ---------- One polite voice for screen readers ---------- */
+    const announcer = $("announce");
+    function announce(text) {
+      announcer.textContent = "";
+      requestAnimationFrame(() => { announcer.textContent = text; });
+    }
+
+    /* ------------------------------------------------------------------
+       Remembering what has been built, on this device only. The demo starts
+       fresh each time; add ?keep to the address to bring earlier builds back.
+       Stored entries are checked before use, and anything odd is dropped.
+       Wrapped in try/catch because private browsing can block storage.
+    ------------------------------------------------------------------ */
+    const KEY = "heirloom.demo.builds.v1";
+    const KEEP = new URLSearchParams(location.search).has("keep");
+    function loadBuilds() {
+      if (!KEEP) return [];
+      let raw;
+      try { raw = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch { return []; }
+      if (!Array.isArray(raw)) return [];
+      return raw
+        .filter((b) => b && typeof b === "object" && typeof b.id === "string" && byId(b.id) && typeof b.name === "string" && cleanName(b.name))
+        .map((b) => ({ id: b.id, name: cleanName(b.name), at: Number.isFinite(b.at) ? b.at : 0 }))
+        .slice(-40);
+    }
+    function saveBuilds(list) {
+      try { localStorage.setItem(KEY, JSON.stringify(list)); } catch { /* storage blocked: the page still works */ }
+    }
+    let built = loadBuilds();
+
+    /* ---------- The world ---------- */
+    const root = document.documentElement;
+    const preview = $("worldPreview");
+    root.style.setProperty("--ar", String(WORLD.aspect || 1.5));
+    const markNoImage = () => root.classList.add("no-image");
+    preview.addEventListener("error", markNoImage);
+    preview.addEventListener("load", () => {
+      if (preview.naturalWidth && preview.naturalHeight) root.style.setProperty("--ar", String(preview.naturalWidth / preview.naturalHeight));
+      placePins();
+    });
+    preview.alt = WORLD.alt;
+    preview.src = WORLD.preview;
+    preview.insertAdjacentHTML("afterend", WORLD.painting);
+    $("world-title").textContent = WORLD.title;
+    $("worldAbout").textContent = WORLD.about;
+    $("stepIn").href = WORLD.url;
+
+    /* ---------- Step 1: the story, in a strip up top and in full beside the build panel ---------- */
+    const firstPart = STORY.parts.find((p) => typeof p === "string") || "";
+    const opening = (firstPart.match(/^.*?[.!?](?=\s|$)/) || [firstPart])[0];
+    const wish = STORY.parts.find((p) => p && p.wish);
+    $("opening").textContent = `“${opening}”`;
+    $("wishLine").textContent = wish ? `“${wish.text}”` : "";
+    $("storyKind").textContent = STORY.kind;
+    $("storyText").innerHTML = STORY.parts.map((p) =>
+      typeof p === "string" ? `<p>${escape(p)}</p>` : `<p class="wish">${escape(p.text)}</p>`
+    ).join("");
+
+    /* Reading it aloud: Grandpa's own recording when there is one, otherwise the device's voice
+       (labelled "Read it aloud", since it is not his voice). */
+    const listen = $("listen");
+    const listenLabel = listen.querySelector("span");
+    const canSpeak = "speechSynthesis" in window;
+    let mode = STORY.audio ? "audio" : canSpeak ? "speech" : "";
+    let player = null;
+    const restingLabel = () => (mode === "audio" ? "Hear Grandpa tell it" : "Read it aloud");
+    function setPlaying(on) {
+      listen.classList.toggle("playing", on);
+      listenLabel.textContent = on ? "Stop" : restingLabel();
+    }
+    function showListen() { listen.hidden = !mode; setPlaying(false); }
+    showListen();
+    const pickVoice = () => {
+      // A warm, low, unhurried voice if the device has one.
+      const voices = speechSynthesis.getVoices().filter((v) => v.lang.startsWith("en"));
+      const wanted = ["Daniel", "Aaron", "Arthur", "Alex", "Tom", "Google UK English Male", "Microsoft Guy"];
+      for (const name of wanted) {
+        const v = voices.find((x) => x.name.includes(name));
+        if (v) return v;
+      }
+      return voices[0] || null;
+    };
+    listen.addEventListener("click", () => {
+      if (mode === "audio") {
+        if (!player) {
+          player = new Audio(STORY.audio);
+          player.addEventListener("playing", () => setPlaying(true));
+          player.addEventListener("pause", () => setPlaying(false));
+          player.addEventListener("ended", () => setPlaying(false));
+          player.addEventListener("error", () => { player = null; mode = canSpeak ? "speech" : ""; showListen(); });
+        }
+        if (!player.paused) { player.pause(); player.currentTime = 0; return; }
+        player.play().catch(() => {});
+        return;
+      }
+      if (mode !== "speech") return;
+      if (speechSynthesis.speaking) { speechSynthesis.cancel(); setPlaying(false); return; }
+      const u = new SpeechSynthesisUtterance(STORY.parts.map(partText).join(" "));
+      const v = pickVoice();
+      if (v) u.voice = v;
+      u.rate = 0.88;
+      u.pitch = 0.85;
+      u.onstart = () => setPlaying(true);
+      u.onend = u.onerror = () => setPlaying(false);
+      speechSynthesis.speak(u);
+    });
+
+    /* ---------- The child's choices ---------- */
+    $("choices").innerHTML = BUILDS.map((b, i) => `
+      <div class="choice">
+        <input type="radio" name="build" id="build-${b.id}" value="${b.id}" ${i === 0 ? "checked" : ""} />
+        <label for="build-${b.id}">${ICONS[b.id]}<span>${escape(b.label)}<small>${escape(b.note)}</small></span></label>
+      </div>`).join("");
+
+    /* ---------- The loop's four steps ---------- */
+    // stage 3: waiting for the child; 4: sending to Grandpa; 5: sent, the loop is complete
+    const progress = { story: false, world: false, stage: 3 };
+    const loopItems = [...document.querySelectorAll("#loop li")];
+    function paintLoop() {
+      const done = [progress.story, progress.world, progress.stage >= 4, progress.stage >= 5];
+      const current = done.indexOf(false);
+      loopItems.forEach((li, i) => {
+        li.classList.toggle("done", done[i]);
+        li.classList.toggle("now", i === current);
+        if (i === current) li.setAttribute("aria-current", "step");
+        else li.removeAttribute("aria-current");
+        li.querySelector(".state").textContent = done[i] ? ", done" : "";
+      });
+    }
+
+    // Steps 1 and 2 tick as the story strip and the world come into view, one after the other.
+    const seen = { story: false, world: false };
+    let tickTimer = 0;
+    function tickSeen() {
+      if (tickTimer) return;
+      const next = !progress.story && seen.story ? "story" : progress.story && !progress.world && seen.world ? "world" : "";
+      if (!next) return;
+      tickTimer = setTimeout(() => {
+        tickTimer = 0;
+        progress[next] = true;
+        paintLoop();
+        tickSeen();
+      }, next === "story" ? 500 : 800);
+    }
+    if ("IntersectionObserver" in window) {
+      const watched = new Map([[$("storyStrip"), "story"], [$("world"), "world"]]);
+      const io = new IntersectionObserver((entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting && e.intersectionRatio >= 0.5) {
+            seen[watched.get(e.target)] = true;
+            io.unobserve(e.target);
+          }
+        }
+        tickSeen();
+      }, { threshold: [0.5] });
+      watched.forEach((_, el) => io.observe(el));
+    } else {
+      // No observer: the story and the world are on the page, so count them as seen.
+      progress.story = progress.world = true;
+    }
+
+    /* ---------- Built things: pins on the world, and the shelf ---------- */
+    const scene = $("scene");
+    const pinsLayer = $("pins");
+
+    // The newest build of each kind gets the spot for that kind.
+    function latestPerKind() {
+      const map = new Map();
+      for (const b of built) { map.delete(b.id); map.set(b.id, b); }
+      return [...map.values()];
+    }
+    function renderPins(fresh) {
+      pinsLayer.innerHTML = latestPerKind().map((b) => {
+        const def = byId(b.id);
+        const spot = def.spot || { x: 50, y: 50 };
+        return `<div class="spot${b === fresh && !reduceMotion ? " fresh" : ""}" data-id="${def.id}" style="--x:${Number(spot.x)}%;--y:${Number(spot.y)}%">
+          <span class="spot-dot"></span><span class="spot-tail"></span>
+          <span class="pin">${ICONS[def.id]}<span>${escape(buildTitle(b))}</span></span>
+        </div>`;
+      }).join("");
+      placePins();
+    }
+    // Keep each card inside the picture: slide it sideways near the edges, flip it below its dot near the top.
+    function placePins() {
+      const w = scene.clientWidth, h = scene.clientHeight;
+      if (!w) return;
+      const sx = pinsLayer.offsetLeft, sy = pinsLayer.offsetTop, sw = pinsLayer.offsetWidth, sh = pinsLayer.offsetHeight;
+      const edge = 10;
+      pinsLayer.querySelectorAll(".spot").forEach((el) => {
+        const spot = byId(el.dataset.id).spot || { x: 50, y: 50 };
+        const pin = el.querySelector(".pin");
+        const ax = sx + (sw * spot.x) / 100;
+        const ay = sy + (sh * spot.y) / 100;
+        const cw = pin.offsetWidth, ch = pin.offsetHeight;
+        let left = ax - cw / 2, dx = 0;
+        if (left < edge) dx = edge - left;
+        else if (left + cw > w - edge) dx = w - edge - (left + cw);
+        pin.style.setProperty("--dx", `${Math.round(dx)}px`);
+        el.classList.toggle("below", ay - 16 - ch < edge && ay + 16 + ch < h - edge);
+      });
+    }
+    if ("ResizeObserver" in window) new ResizeObserver(placePins).observe(scene);
+    else window.addEventListener("resize", placePins);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(placePins);
+
+    function popPin(entry) {
+      const el = pinsLayer.querySelector(`.spot[data-id="${entry.id}"]`);
+      if (!el) return;
+      el.classList.remove("fresh");
+      void el.offsetWidth; // restart the animation if the same spot pops twice
+      el.classList.add("pop");
+    }
+
+    function renderShelf() {
+      $("shelf").innerHTML = built.length
+        ? built.map((b) => `<li>${ICONS[b.id]}<span>${escape(buildTitle(b))}</span></li>`).join("")
+        : `<li class="empty">Nothing yet. The first thing you build will appear here.</li>`;
+      $("startOver").hidden = built.length === 0;
+    }
+
+    /* ---------- Step 4: the postcard to Grandpa ---------- */
+    const zone = $("letterZone");
+    const SENDING = `<span class="dot" aria-hidden="true"></span><span>Sending to Grandpa...</span>`;
+    const SENT = `<span class="avatar sm" aria-hidden="true">G</span><span>Grandpa has it</span>`;
+    function renderLetter(entry, sent) {
+      const def = byId(entry.id);
+      const spot = def.spot || { x: 50, y: 50 };
+      zone.innerHTML = `
+        <h2 class="eyebrow">Step 4 &middot; It goes back to Grandpa</h2>
+        <article class="letter postcard" id="postcard" tabindex="-1" aria-labelledby="pcMessage">
+          ${sent ? "" : `<div class="envelope" id="envelope" aria-hidden="true">${ICONS.envelope}</div>`}
+          <div class="pc-picture">
+            <div class="thumb" role="img" aria-label="${escape(`${WORLD.title}, with ${buildTitle(entry)} drawn in`)}">
+              <div class="stage"><img src="${escape(WORLD.preview)}" alt="" />${WORLD.painting}</div>
+              <span class="drawn" style="--x:${Number(spot.x)}%;--y:${Number(spot.y)}%">${ICONS[def.id]}</span>
+            </div>
+            <p class="pc-place">${escape(WORLD.title)}</p>
+          </div>
+          <div class="pc-words">
+            <span class="stamp" aria-hidden="true">${ICONS.stamp}</span>
+            <p class="pc-to">To Grandpa</p>
+            <p class="message" id="pcMessage">${escape(def.message(entry.name))}</p>
+            ${def.echo ? `<p class="echo">${escape(def.echo)}</p>` : ""}
+            <p class="detail">${escape(def.detail)}</p>
+            <p class="sign">Love, ${escape(entry.name)}</p>
+          </div>
+          <div class="pc-foot">
+            <div class="status${sent ? " sent" : ""}" id="status">${sent ? SENT : SENDING}</div>
+            <p class="closing" id="closing"${sent ? "" : " hidden"}>“The world Grandpa and I built.”</p>
+          </div>
+        </article>`;
+      zone.querySelectorAll("img").forEach((img) => img.addEventListener("error", markNoImage));
+    }
+
+    /* ---------- Adding something, and sending the news to Grandpa ---------- */
+    const form = $("buildForm");
+    const nameInput = $("childName");
+    const addBtn = $("addBtn");
+    const hint = $("hint");
+    let busy = false;  // true from a tap on "Add" until Grandpa has it, so a double tap adds once
+    let timers = [];
+    const later = (fn, ms) => { timers.push(setTimeout(fn, ms)); };
+    const clearTimers = () => { timers.forEach(clearTimeout); timers = []; };
+    const setBusy = (on) => {
+      busy = on;
+      if (on) addBtn.setAttribute("aria-disabled", "true");
+      else addBtn.removeAttribute("aria-disabled");
+    };
+    const scrollToEl = (el, block) => el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block });
+
+    function showHint(text) {
+      hint.textContent = text;
+      nameInput.setAttribute("aria-invalid", "true");
+      announce(text);
+      nameInput.focus();
+    }
+    function clearHint() {
+      hint.textContent = "";
+      nameInput.removeAttribute("aria-invalid");
+    }
+    nameInput.addEventListener("input", () => { if (hint.textContent && nameInput.value.trim()) clearHint(); });
+
+    function markSent() {
+      $("envelope")?.remove();
+      const status = $("status");
+      if (!status) return;
+      status.classList.add("sent");
+      status.innerHTML = SENT;
+      $("closing").hidden = false;
+      progress.stage = 5;
+      paintLoop();
+      setBusy(false);
+      announce("Sent. Grandpa has it.");
+    }
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (busy) return;
+      const name = cleanName(nameInput.value);
+      const choice = form.querySelector('input[name="build"]:checked');
+      const def = choice && byId(choice.value);
+      if (!name) {
+        showHint("Write your name so Grandpa knows who built it.");
+        return;
+      }
+      if (!def) return;
+      clearHint();
+      setBusy(true);
+      clearTimers();
+
+      const entry = { id: def.id, name, at: Date.now() };
+      built = [...built, entry];
+      saveBuilds(built);
+      clearTimeout(tickTimer);
+      tickTimer = 0;
+      progress.story = progress.world = true;
+      progress.stage = 4;
+      paintLoop();
+      renderShelf();
+      renderPins(entry);
+      renderLetter(entry, false);
+      announce(`${buildTitle(entry)} is in Grandpa's world. Sending a postcard to Grandpa.`);
+
+      // First the world, so the new pin pops in view; then the postcard.
+      scrollToEl($("world"), "center");
+      later(() => popPin(entry), reduceMotion ? 0 : 450);
+      later(() => {
+        const card = $("postcard");
+        scrollToEl(zone, zone.offsetHeight < window.innerHeight - 32 ? "center" : "start");
+        card?.focus({ preventScroll: true });
+        later(() => {
+          const env = $("envelope");
+          if (!env) return;
+          if (reduceMotion) { env.remove(); return; }
+          env.addEventListener("animationend", () => env.remove(), { once: true });
+          env.classList.add("fly");
+        }, reduceMotion ? 0 : 650);
+        later(markSent, reduceMotion ? 600 : 1950);
+      }, 1650);
+    });
+
+    $("startOver").addEventListener("click", () => {
+      clearTimers();
+      setBusy(false);
+      built = [];
+      saveBuilds(built);
+      zone.innerHTML = "";
+      progress.stage = 3;
+      paintLoop();
+      renderPins();
+      renderShelf();
+      // The button hides itself, so give focus a sensible home: the build heading.
+      $("build-title").focus({ preventScroll: true });
+      scrollToEl($("build"), "start");
+      announce("Started over. Grandpa's world is ready for something new.");
+    });
+
+    /* ---------- First paint ---------- */
+    if (built.length) {
+      // Brought back with ?keep: the loop has already gone all the way round.
+      progress.story = progress.world = true;
+      progress.stage = 5;
+      renderLetter(built[built.length - 1], true);
+    }
+    paintLoop();
+    renderPins();
+    renderShelf();
+  </script>
+</body>
+</html>

@@ -40,6 +40,29 @@ It is built, tested (357 unit tests, end-to-end runs in headless Chrome) and com
 - **World Builder**: living Three.js worlds built and verified by Gemini 4 Argon (below). This is the first step toward
   Heirloom's worlds.
 
+## Grandpa's world in 3D (`/world`)
+
+Open http://localhost:3000/world. Grandpa's village is a World Labs Marble world, streamed straight from Marble's
+CDN and drawn with Spark (World Labs' gaussian-splat renderer for three.js). A light 2.4 MB version opens in a second
+or two everywhere; on laptops and desktops the full 68.5 MB version loads in the background and swaps in.
+
+The HUD on top:
+
+- **Grandpa's card**: his portrait, the line he is telling, and "Play the story", which glides the camera to each
+  moment while the line is read aloud.
+- **Story path**: the four moments of the story, numbered like the markers floating in the world, plus everything the
+  child has built.
+- **Readouts**: a compass, how high you are, how far the next story moment is, and a measuring card for the piece you
+  are about to place ("8 planks, 3.2 m long").
+- **Moving**: drag to look, W A S D or the on-screen pad to walk, pinch or scroll to step forward.
+- **Changing the world**: morning, day, sunset, or night with fireflies.
+- **Build mode**: a hotbar of eight pieces (bridge, garden, house, treehouse, lantern, bench, boat, tree), turn, longer
+  or shorter for the bridge, place, undo, and **Show Grandpa**, which turns the build into a postcard.
+
+What the child builds stays on the device (`?fresh` starts an empty world for rehearsals; `?quality=preview` skips the
+big download). A new story is a new copy of `components/world/config.ts`: the splat files, Grandpa's lines, and where
+the camera stands for each moment.
+
 ## Next: from story to world
 
 - [ ] Grandparent recorder with the AI interviewer (memories, dreams, anything)

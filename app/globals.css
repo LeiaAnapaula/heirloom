@@ -16,10 +16,21 @@
   --color-mist: #a9b8e8; /* quiet text, inactive things */
 
   --ease-float: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Heirloom, the world Grandpa and I built: river-valley colors for the 3D world's HUD. */
+  --color-paper: #eef1e8; /* panel paper, a misty green-white */
+  --color-pine: #2c3a32; /* words and outlines */
+  --color-wood: #8a5a3b; /* the bridge, borders, quiet accents */
+  --color-honey: #e3a83d; /* what is picked, alive, or about to happen */
+  --color-river: #5f8296; /* water, distance, the timeline */
+  --color-geranium: #c8574a; /* the red window flowers; "can't go there" */
+  --color-leaf: #6f8e5f; /* done, visited, growing */
 }
 
 @theme inline {
   --font-sans: var(--font-quicksand), ui-rounded, system-ui, sans-serif;
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-ui: var(--font-nunito), ui-rounded, system-ui, sans-serif;
 }
 
 html,
@@ -81,5 +92,39 @@ body {
     box-shadow:
       0 0 0 1px rgb(245 201 105 / 0.7),
       0 0 32px 6px rgb(245 201 105 / 0.35);
+  }
+}
+
+/* In the 3D world the panels are pale paper, so focus rings are pine, not starlight gold. */
+.heirloom :focus-visible {
+  outline: 3px solid var(--color-pine);
+  outline-offset: 3px;
+  border-radius: 14px;
+}
+
+/* One paper look for every HUD panel: frosted, so the world stays visible behind it. */
+.hud-panel {
+  background: rgb(238 241 232 / 0.86);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+  border: 1px solid rgb(44 58 50 / 0.14);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.6) inset,
+    0 10px 30px -12px rgb(20 30 24 / 0.45);
+  color: var(--color-pine);
+}
+
+@keyframes notice {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  10%,
+  80% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
   }
 }
