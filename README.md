@@ -84,12 +84,15 @@ lesson says 4 teaches the wrong number. The **World Builder** (`scripts/build-wo
 1. builds the lesson page as a living Three.js world (`scene.html`),
 2. writes a headless-Chrome check of the lesson (`verify.mjs`): exact planet count, everything in frame,
    nothing on the book's fold, the narration and number-button bands clear, readable top, it moves, zero errors,
-   and the page's API (`highlight`, `addPlanet`) works,
+   the page's API (`highlight`, `addPlanet`) works, and it is ready within 1 second of loading,
 3. renders, reads the failures and screenshots, fixes the scene, and loops until every check passes.
 
-The verified world, its `report.json` (score per round) and a screenshot per round come home to
-`public/worlds/count-<N>/`, and the counting page in the book loads it: the child still says or taps the
-number, and the book lights each planet as it counts.
+The world, its `report.json` (score per round) and a screenshot per round come home to a new folder for
+each run, `public/worlds/count-<N>-<time>/`, so a failed rebuild never touches the world the book is using. It is saved pointing at the app's own copy of three.js (`public/worlds/vendor/`),
+so the book never waits on a CDN, and `scripts/world-check.ts` checks that saved copy again here, served the
+way the book serves it. Only a world that passes both the agent's checks and these goes into the book: the
+child still says or taps the number, and the book lights each planet as it counts.
+`scripts/build-world-local.mts` runs the same loop with every round checked on this machine instead.
 
 ```bash
 npx tsx scripts/argon-hello.mts          # first calls: Argon, then the managed agent
