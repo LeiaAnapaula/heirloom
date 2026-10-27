@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { cleanChildInput } from "@/lib/account-types";
+import { IDEAS } from "@/lib/profile";
 import { Field, FormError, Pill, PrimaryButton } from "./fields";
 
-const IDEAS = ["space", "dinosaurs", "the ocean", "animals", "trucks", "music", "drawing", "bugs", "castles", "trains"];
 const AGES = [3, 4, 5, 6, 7, 8];
 
 export type ChildDraft = { name: string; age: number; interests: string[] };

@@ -1,11 +1,12 @@
-import type { Episode, Line, Screen } from "./episode";
-import { hasEmoji, hasLink, hasTerm } from "./safety";
+import type { Episode, Line, Screen, Telling } from "./episode";
+import { checkLines, hasEmoji, hasLink, hasTerm, maskAnySpelling } from "./safety";
 
 /**
  * The story brain: rewrites an episode's narration for another child (name + interests)
  * while every screen keeps its learning task. The written narration is always the
- * default; generated lines replace it only after validation and the safety check.
- * No SDK here: this module is safe in the browser. Claude is called from app/api/story.
+ * default; a written telling for the child's theme comes next (pickTelling), and generated
+ * lines replace it only after validation and the safety check.
+ * No SDK here: this module is safe in the browser. Claude or Gemini is called from app/api/story.
  */
 
 /** CLAUDE.md section 10, word for word. */
@@ -305,17 +306,183 @@ export function salvageGenerated(
   return { value: { screens: kept }, dropped };
 }
 
+// ---------------------------------------------------------------- checking a generated story
+
+/** The JSON every story model must return, as a schema for structured output. */
+export const STORY_SCHEMA = {
+  type: "object",
+  properties: {
+    screens: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          narration: { type: "array", items: { type: "string" }, minItems: 1 },
+        },
+        required: ["id", "narration"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["screens"],
+  additionalProperties: false,
+} as const;
+
+/** CLAUDE.md section 11: a second model call answers "safe for a 5-year-old: yes or no" for every line. */
+export const SAFETY_SYSTEM_PROMPT = [
+  "You check lines from a storybook before a 5-year-old hears them.",
+  "For each numbered line, answer one question: is it safe and appropriate for a 5-year-old, yes or no?",
+  "A line is unsafe if it is scary, violent, romantic, about real brands, characters or people, asks for personal information, or is confusing.",
+  "[name] stands for the child's first name.",
+  "Return one verdict for every line: index is the line's number, safe is true for yes and false for no.",
+].join("\n");
+
+export const VERDICT_SCHEMA = {
+  type: "object",
+  properties: {
+    verdicts: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { index: { type: "integer" }, safe: { type: "boolean" } },
+        required: ["index", "safe"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["verdicts"],
+  additionalProperties: false,
+} as const;
+
+/** What the classifier reads: one numbered line each ("1. ..."), with names already masked. */
+export const numberLines = (lines: string[]) => lines.map((line, i) => `${i + 1}. ${line}`).join("\n");
+
+/**
+ * The classifier's answer as one verdict per line, in order. A line answered twice counts as
+ * safe only if every answer said so. Throws (checkLines then fails closed) unless the answer
+ * numbers the lines exactly as we did: every index a whole number from 1 to `count`, every
+ * line answered, every safe a true or false. A classifier that counts from 0 or skips a line
+ * would otherwise lend one line's "safe" to its neighbor.
+ */
+export function readVerdicts(answer: unknown, count: number): boolean[] {
+  const list = typeof answer === "object" && answer !== null ? (answer as { verdicts?: unknown }).verdicts : undefined;
+  if (!Array.isArray(list)) throw new Error("classifier gave no verdicts");
+  const answers = new Map<number, boolean>();
+  for (const v of list) {
+    const { index, safe } = (typeof v === "object" && v !== null ? v : {}) as { index?: unknown; safe?: unknown };
+    if (typeof index !== "number" || !Number.isInteger(index) || index < 1 || index > count) {
+      throw new Error("classifier numbered a line we did not send");
+    }
+    if (typeof safe !== "boolean") throw new Error("classifier gave a verdict that is not yes or no");
+    answers.set(index, (answers.get(index) ?? true) && safe);
+  }
+  // Every index is in 1..count, so `count` different ones means each line was answered.
+  if (answers.size !== count) throw new Error("classifier skipped a line");
+  return Array.from({ length: count }, (_, i) => answers.get(i + 1) === true);
+}
+
+export type ScreenedStory =
+  | { ok: true; screens: GeneratedScreens["screens"]; fallback: string[] }
+  | { ok: false; why: "output failed validation" | "nothing passed the safety check" };
+
+/**
+ * The checks every generated story passes before a child hears it, whichever model wrote it.
+ * The strict check first; if it fails, the screens that pass on their own. Then safety: the
+ * blocklist, then `classify` on the lines with the child's name masked in any spelling ("Zoe"
+ * for Zoë too). Any unsafe line sends its whole screen back to the written version. `fallback`
+ * lists every outline id that plays as written, in outline order. Not ok when nothing usable is
+ * left; `why` says which step.
+ */
+export async function screenStory(
+  raw: unknown,
+  outline: ScreenOutline[],
+  profile: StoryProfile,
+  classify: (lines: string[]) => Promise<boolean[]>,
+): Promise<ScreenedStory> {
+  const strict = validateGenerated(raw, outline, profile);
+  const checked = strict.ok ? { value: strict.value, dropped: [] as string[] } : salvageGenerated(raw, outline, profile);
+  if (!checked) return { ok: false, why: "output failed validation" };
+
+  const screens = checked.value.screens;
+  const lines = screens.flatMap((s) => s.narration.map((t) => maskAnySpelling(t, profile.name)));
+  const verdicts = await checkLines(lines, classify);
+  let k = 0;
+  const safe = screens.filter((s) => {
+    const ok = verdicts.slice(k, k + s.narration.length).every((v) => v.safe);
+    k += s.narration.length;
+    return ok;
+  });
+
+  // Re-run the per-screen check so `fallback` lists every id not generated, in outline order.
+  const final = salvageGenerated({ screens: safe }, outline, profile);
+  if (!final) return { ok: false, why: "nothing passed the safety check" };
+  return { ok: true, screens: final.value.screens, fallback: final.dropped };
+}
+
+// ---------------------------------------------------------------- written tellings
+
+/** An interest as plain words: lowercase, one space between words, no leading "the ". */
+const interestWords = (interest: string) =>
+  interest.toLowerCase().replace(/[\s-]+/g, " ").trim().replace(/^the /, "");
+
+/** The forms a phrase could take without a plural ending: "ponies" also reads as "pony", "buses" as "bus". */
+function singulars(words: string): string[] {
+  const out = [words];
+  if (words.endsWith("ies")) out.push(`${words.slice(0, -3)}y`);
+  if (words.endsWith("es")) out.push(words.slice(0, -2));
+  if (words.endsWith("s") && !words.endsWith("ss")) out.push(words.slice(0, -1));
+  return out;
+}
+
+/**
+ * True when two interests name the same thing. Case, extra spaces, a leading "the " and a simple
+ * plural do not matter, so "Dinosaur", "dinosaurs" and "the dinosaurs" all match. Whole phrases
+ * only: "sea animals" is not "animals".
+ */
+export function sameInterest(a: string, b: string): boolean {
+  const forms = singulars(interestWords(a));
+  return forms[0] !== "" && singulars(interestWords(b)).some((f) => forms.includes(f));
+}
+
+/**
+ * Which story a child hears, from their interests in order: the first interest that matches
+ * anything decides. "written" when the written story is already about it (a child who loves
+ * space), the matching telling for another love, or null when nothing matches (then the story
+ * brain may write one).
+ */
+export function pickTelling(episode: Episode, interests: string[]): Telling | "written" | null {
+  for (const interest of interests) {
+    if ((episode.about ?? []).some((a) => sameInterest(a, interest))) return "written";
+    const telling = (episode.tellings ?? []).find((t) => t.interests.some((w) => sameInterest(w, interest)));
+    if (telling) return telling;
+  }
+  return null;
+}
+
+/**
+ * The episode with a written telling's narration swapped in. Line ids become
+ * "tell-<telling id>-<outline id>-<i>". Ids the telling leaves out stay as written, and so do
+ * hints, give-up lines, count steps and numbers.
+ */
+export function applyTelling(episode: Episode, telling: Telling): Episode {
+  const screens = Object.entries(telling.screens).map(([id, narration]) => ({ id, narration }));
+  return applyGenerated(episode, { screens }, [], `tell-${telling.id}`);
+}
+
+// ---------------------------------------------------------------- swapping narration in
+
 /**
  * A new Episode with generated narration swapped in. Line ids become
- * "gen-<outlineId>-<i>" so cached audio recorded for Mia never plays over new words.
- * Interactions, hints and give-up lines are untouched. Ids in `keepDefault` stay as written.
+ * "<idPrefix>-<outlineId>-<i>" ("gen-go-0") so cached audio recorded for Mia never plays over
+ * new words. Interactions, hints and give-up lines are untouched. Ids in `keepDefault` stay as written.
  */
-export function applyGenerated(episode: Episode, gen: GeneratedScreens, keepDefault: string[] = []): Episode {
+export function applyGenerated(episode: Episode, gen: GeneratedScreens, keepDefault: string[] = [], idPrefix = "gen"): Episode {
   const keep = new Set(keepDefault);
   const byId = new Map(gen.screens.filter((s) => !keep.has(s.id) && s.narration.length > 0).map((s) => [s.id, s.narration]));
   const swap = (id: string, written: Line[]): Line[] => {
     const lines = byId.get(id);
-    return lines ? lines.map((text, i) => ({ id: `gen-${id}-${i}`, text })) : written;
+    return lines ? lines.map((text, i) => ({ id: `${idPrefix}-${id}-${i}`, text })) : written;
   };
   return {
     ...episode,

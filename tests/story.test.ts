@@ -5,12 +5,14 @@ import {
   buildOutline,
   buildStoryMessage,
   getNarration,
+  readVerdicts,
   salvageGenerated,
   validateGenerated,
   type GeneratedScreens,
   type StoryProfile,
 } from "@/lib/story";
 import { lostStar } from "@/content/episodes/lost-star";
+import { checkLines } from "@/lib/safety";
 
 const LEO: StoryProfile = { name: "Leo", age: 5, interests: ["dinosaurs"] };
 const outline = buildOutline(lostStar);
@@ -207,6 +209,50 @@ describe("salvageGenerated", () => {
   it("gives up on a broken shape or a story without the name", () => {
     expect(salvageGenerated({ screens: "nope" }, outline, LEO)).toBeNull();
     expect(salvageGenerated({ screens: [{ id: "count", narration: ["How many planets do you see?"] }] }, outline, LEO)).toBeNull();
+  });
+});
+
+describe("readVerdicts", () => {
+  const verdicts = (...pairs: [unknown, unknown][]) => ({ verdicts: pairs.map(([index, safe]) => ({ index, safe })) });
+
+  it("reads one verdict per line, numbered from 1, in any order", () => {
+    expect(readVerdicts(verdicts([2, false], [1, true], [3, true]), 3)).toEqual([true, false, true]);
+  });
+
+  it("counts a line answered twice as safe only if every answer said so", () => {
+    expect(readVerdicts(verdicts([1, true], [2, true], [2, false]), 2)).toEqual([true, false]);
+    expect(readVerdicts(verdicts([1, true], [1, true], [2, true]), 2)).toEqual([true, true]);
+  });
+
+  it("throws on numbering from 0, so no line borrows its neighbor's verdict", () => {
+    expect(() => readVerdicts(verdicts([0, true], [1, true], [2, false]), 3)).toThrow();
+  });
+
+  it("throws on numbering from 2", () => {
+    expect(() => readVerdicts(verdicts([2, true], [3, true], [4, true]), 3)).toThrow();
+  });
+
+  it("throws when a line is skipped", () => {
+    expect(() => readVerdicts(verdicts([1, true], [3, true]), 3)).toThrow();
+  });
+
+  it("throws when a line is answered twice and another never", () => {
+    expect(() => readVerdicts(verdicts([1, true], [1, true], [2, true]), 3)).toThrow();
+  });
+
+  it("throws on a verdict that is not true or false, or an index that is not a whole number", () => {
+    expect(() => readVerdicts(verdicts([1, "yes"], [2, true]), 2)).toThrow();
+    expect(() => readVerdicts(verdicts([1, true], [2, null]), 2)).toThrow();
+    expect(() => readVerdicts(verdicts([1, true], [1.5, true], [2, true]), 2)).toThrow();
+    expect(() => readVerdicts(verdicts(["1", true], [2, true]), 2)).toThrow();
+    expect(() => readVerdicts({ verdicts: "all safe" }, 2)).toThrow();
+  });
+
+  it("makes checkLines mark every line unsafe when the numbering is off", async () => {
+    const lines = ["Hello, [name].", "The Moon pulls gently.", "How many planets do you see?"];
+    // A classifier that counts from 0: line 3 would have taken line 2's "safe".
+    const result = await checkLines(lines, async (ls) => readVerdicts(verdicts([0, true], [1, true], [2, false]), ls.length));
+    expect(result.map((v) => v.safe)).toEqual([false, false, false]);
   });
 });
 

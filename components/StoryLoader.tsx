@@ -9,14 +9,16 @@ import Starfield from "./Starfield";
 import { loadReader } from "@/lib/active-profile";
 import type { Episode } from "@/lib/episode";
 import { MIA, type ChildProfile } from "@/lib/profile";
-import { getNarration } from "@/lib/story";
+import { applyTelling, getNarration, pickTelling } from "@/lib/story";
 
 type Ready = { profile: ChildProfile; episode: Episode; childId: string | null };
 
 /**
- * Finds out who is reading, and for anyone but Mia asks the story brain to retell the
- * episode around what they love. Mia's written story (and its pre-made audio) is the default.
- * While a new story is being written, the closed book breathes on the night sky.
+ * Finds out who is reading and picks their story. Mia hears the written story (and its
+ * pre-made audio). Anyone else hears, in this order: the written story when it is already
+ * about what they love (space), a written telling for their theme (dinosaurs, the ocean...),
+ * both instantly, or else a story the story brain writes for them. Only that last one waits,
+ * with the closed book breathing on the night sky, and any problem there means the written story.
  */
 export default function StoryLoader({ episode }: { episode: Episode }) {
   const [ready, setReady] = useState<Ready | null>(null);
@@ -38,6 +40,10 @@ export default function StoryLoader({ episode }: { episode: Episode }) {
       const { profile, childId } = await loadReader();
       if (abort.signal.aborted) return;
       if (profile.id === MIA.id) return setReady({ profile, episode, childId });
+      // A written story for what this child loves needs no wait.
+      const telling = pickTelling(episode, profile.interests);
+      if (telling === "written") return setReady({ profile, episode, childId });
+      if (telling) return setReady({ profile, episode: applyTelling(episode, telling), childId });
       setWaitingFor(profile.name);
       const story = await getNarration(
         { name: profile.name, age: profile.age, interests: profile.interests },

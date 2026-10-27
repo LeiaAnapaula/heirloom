@@ -50,6 +50,19 @@ describe("input cleaning", () => {
     expect(cleanChildInput({ name: "Leo", age: 5, interests: ["http://x.com"] })).toHaveProperty("error");
     expect(cleanChildInput({ name: "<script>", age: 5, interests: ["space"] })).toHaveProperty("error");
   });
+  it("keeps names and interests in one Unicode form (NFC), however they were typed", () => {
+    const jiwoo = "지우";
+    const athena = "Ἀθηνᾶ";
+    expect(cleanChildInput({ name: jiwoo.normalize("NFD"), age: 5, interests: ["로봇".normalize("NFD")] })).toEqual({
+      name: jiwoo,
+      age: 5,
+      interests: ["로봇"],
+    });
+    // A Greek name with its accents as separate marks is accepted once composed, and stored composed.
+    expect(cleanChildInput({ name: athena.normalize("NFD"), age: 5, interests: ["owls"] })).toMatchObject({ name: athena });
+    // The same interest typed both ways is one interest.
+    expect(cleanChildInput({ name: "Leo", age: 5, interests: ["café", "café"] })).toMatchObject({ interests: ["café"] });
+  });
   it("checks emails and passwords", () => {
     expect(cleanEmail(" Parent@Example.COM ")).toBe("parent@example.com");
     expect(cleanEmail("not an email")).toBeNull();

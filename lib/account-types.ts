@@ -24,15 +24,21 @@ export const CONSENT_TEXT =
 const NAME = /^[\p{L}][\p{L}' -]{0,19}$/u;
 const INTEREST = /^[\p{L} ]{2,30}$/u;
 
+/**
+ * A child's details as we keep them: trimmed, one space between words, and in one Unicode form
+ * (NFC), so a name pasted in pieces (a Korean name as separate jamo, a Greek accent as its own
+ * mark) is stored, and later masked, exactly like the same name typed in one go.
+ */
 export function cleanChildInput(input: unknown): { name: string; age: number; interests: string[] } | { error: string } {
   if (!input || typeof input !== "object") return { error: "Please fill in your child's details." };
   const { name, age, interests } = input as Record<string, unknown>;
-  const n = typeof name === "string" ? name.trim().replace(/\s+/g, " ") : "";
+  const n = typeof name === "string" ? name.trim().replace(/\s+/g, " ").normalize("NFC") : "";
   if (!NAME.test(n)) return { error: "Use your child's first name only (letters, up to 20)." };
   const a = typeof age === "number" ? age : Number(age);
   if (!Number.isInteger(a) || a < 3 || a > 8) return { error: "The Primer is made for children ages 3 to 8." };
   const list = Array.isArray(interests) ? interests : [];
-  const ints = [...new Set(list.map((i) => (typeof i === "string" ? i.trim().toLowerCase().replace(/\s+/g, " ") : "")))].filter(Boolean);
+  const tidyInterest = (i: unknown) => (typeof i === "string" ? i.trim().toLowerCase().replace(/\s+/g, " ").normalize("NFC") : "");
+  const ints = [...new Set(list.map(tidyInterest))].filter(Boolean);
   if (ints.length < 1 || ints.length > 3) return { error: "Pick one to three things your child loves." };
   if (!ints.every((i) => INTEREST.test(i))) return { error: "Interests can only use letters and spaces." };
   return { name: n, age: a, interests: ints };

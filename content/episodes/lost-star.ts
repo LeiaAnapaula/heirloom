@@ -1,4 +1,5 @@
 import type { Episode } from "@/lib/episode";
+import { lostStarTellings } from "./lost-star-tellings";
 
 /**
  * "Mia and the Lost Star", as data. Screens read from this file, so a new episode
@@ -9,6 +10,8 @@ export const lostStar: Episode = {
   id: "lost-star",
   title: "{name} and the Lost Star",
   next: { title: "Saturn's Rings" },
+  about: ["space", "planets", "stars", "rockets", "the moon", "astronauts", "how things move"],
+  tellings: lostStarTellings,
   screens: [
     {
       id: "wake",

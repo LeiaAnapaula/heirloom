@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { allLines } from "@/lib/episode";
-import { blocklistCheck, checkLines, hasTerm, maskName } from "@/lib/safety";
+import { blocklistCheck, checkLines, fold, hasTerm, holdsName, maskAnySpelling, maskName } from "@/lib/safety";
 import { lostStar } from "@/content/episodes/lost-star";
 
 describe("blocklistCheck", () => {
@@ -80,6 +80,77 @@ describe("hasTerm and maskName", () => {
     expect(masked).toBe("Hello, [name]. [name], look!");
     expect(blocklistCheck(masked).safe).toBe(true);
     expect(maskName("Anne-Marie sees Mars.", "Anne-Marie")).toBe("[name] sees Mars.");
+  });
+
+  it("masks a name whichever Unicode form the name and the line are in", () => {
+    const jiwoo = "지우"; // Korean, composed syllables
+    const jiwooInPieces = jiwoo.normalize("NFD"); // the same name as separate jamo
+    expect(jiwooInPieces).not.toBe(jiwoo);
+    expect(maskName(`안녕, ${jiwoo}!`, jiwooInPieces)).toBe("안녕, [name]!");
+    expect(maskName(`안녕, ${jiwooInPieces}!`, jiwoo)).toBe("안녕, [name]!");
+
+    const athena = "Ἀθηνᾶ"; // polytonic Greek
+    expect(maskName(`Hello, ${athena}.`, athena.normalize("NFD"))).toBe("Hello, [name].");
+    // Eta with oxia (U+1F75) is the same letter as eta with tonos: NFC turns one into the other.
+    expect(maskName("Hello, Ζωή.", "Ζωή")).toBe("Hello, [name].");
+    // A CJK compatibility ideograph (U+F900) is the same character as U+8C48 once composed.
+    expect(maskName("Hello, 豈.", "豈")).toBe("Hello, [name].");
+  });
+});
+
+describe("maskAnySpelling and holdsName: the child's name in any spelling", () => {
+  it("folds case, accents, letters like ø and ł, wide letters and the ʻokina", () => {
+    expect(fold("Søren SØREN ｓｏｒｅｎ")).toBe("soren soren soren");
+    expect(fold("Łucja Paweł Aslı İLKAY Đorđe Æsa Œil Straße Þóra Kaʻiulani")).toBe(
+      "lucja pawel asli ilkay dorde aesa oeil strasse thora kaiulani",
+    );
+    expect(fold("ΟΔΥΣΣΕΑΣ")).toBe(fold("Οδυσσέας"));
+  });
+
+  it.each([
+    ["Søren", "soren"],
+    ["Bjørn", "BJORN"],
+    ["Łucja", "lucja"],
+    ["Paweł", "PAWEL"],
+    ["Aslı", "asli"],
+    ["Işıl", "IŞIL"],
+    ["Zoë", "zoe"],
+    ["Mary Ann", "maryann"],
+    ["Mary Ann", "mary-ann"],
+    ["Anne-Marie", "anne marie"],
+    ["O'Neil", "oneil"],
+    ["O'Neil", "O’Neil"],
+    ["Mia", "ｍｉａ"],
+    ["Kaʻiulani", "Kaiulani"],
+  ])("finds %s written %j", (name, written) => {
+    expect(holdsName(`Look, ${written}! A kite.`, name)).toBe(true);
+    expect(maskAnySpelling(`Look, ${written}! A kite.`, name)).toBe("Look, [name]! A kite.");
+  });
+
+  it("matches whole words only, and leaves the rest of the line as it was", () => {
+    expect(holdsName("Sorensen waves.", "Søren")).toBe(false);
+    expect(maskAnySpelling("Mia's kite, and Miami.", "Mia", "{name}")).toBe("{name}'s kite, and Miami.");
+    // An accent mark with no composed letter, typed after the name, goes with it.
+    expect(maskAnySpelling("Hello, Mia\u0331!", "Mia")).toBe("Hello, [name]!");
+    expect(maskAnySpelling("Hi 지우.", "지우".normalize("NFD"))).toBe("Hi [name].");
+  });
+
+  it("lets a gap fall inside the name only when asked, for interests: never in story lines", () => {
+    expect(maskAnySpelling("mary ann kites", "Maryann", "Tavi", { gapsAnywhere: true })).toBe("Tavi kites");
+    expect(holdsName("mary ann kites", "Maryann")).toBe(false);
+    // "in a" is not Ina in a story line.
+    expect(maskAnySpelling("We fly in a rocket.", "Ina")).toBe("We fly in a rocket.");
+    expect(holdsName("We fly in a rocket.", "Ina")).toBe(false);
+  });
+
+  it("counts a name that folds to nothing as there, so nothing is sent", () => {
+    expect(holdsName("A star fell.", "\u02BB\u02BB")).toBe(true);
+    expect(holdsName("A star fell.", "")).toBe(false);
+  });
+
+  it("leaves maskName exact, for text a child hears: angel never turns into Ángel", () => {
+    expect(maskName("Like a little angel.", "Ángel", "{name}")).toBe("Like a little angel.");
+    expect(holdsName("Like a little angel.", "Ángel")).toBe(true);
   });
 });
 

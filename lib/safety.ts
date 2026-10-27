@@ -130,11 +130,104 @@ export function hasEmoji(text: string): boolean {
 /**
  * Swap the child's name for a placeholder before checking. A child named Elsa should
  * not trip the brand list, and the classifier never needs to see the name at all.
+ * Text and name are both put in the same Unicode form (NFC) first, so a name typed in
+ * pieces (a Korean name as separate jamo, a Greek accent as its own mark) still matches
+ * lines that were tidied into the composed form, and the other way round.
  */
 export function maskName(text: string, name: string, mask = "[name]"): string {
-  if (!name.trim()) return text;
-  const re = new RegExp(`(^|[^\\p{L}\\p{N}])(?:${termSource(name)})(?=$|[^\\p{L}\\p{N}])`, "giu");
-  return text.replace(re, `$1${mask}`);
+  const composedName = name.normalize("NFC");
+  if (!composedName.trim()) return text;
+  const re = new RegExp(`(^|[^\\p{L}\\p{N}])(?:${termSource(composedName)})(?=$|[^\\p{L}\\p{N}])`, "giu");
+  return text.normalize("NFC").replace(re, `$1${mask}`);
+}
+
+// ---------------------------------------------------------------- the child's name, in any spelling
+
+// Letters with no accent to strip, read the way a plain keyboard types them. Final sigma reads as
+// sigma, so a Greek name in capitals still matches.
+const PLAIN_LETTERS: Record<string, string> = {
+  ø: "o", ł: "l", đ: "d", ð: "d", ħ: "h", ŧ: "t", ı: "i", æ: "ae", œ: "oe", ß: "ss", þ: "th", ς: "σ",
+};
+// Letters shaped like apostrophes (the Hawaiian ʻokina, ʼ) count for nothing.
+const SILENT_LETTERS = /[ʹ-ʿ]/gu;
+
+/** One character as the name check reads it: lowercase, no accents, wide or fancy forms as plain letters, ø as o. */
+function foldChar(ch: string): string {
+  const bare = ch.normalize("NFKD").toLowerCase().normalize("NFKD").replace(/\p{M}/gu, "").replace(SILENT_LETTERS, "");
+  return Array.from(bare, (c) => PLAIN_LETTERS[c] ?? c).join("");
+}
+
+/** Text as the name check reads it: "Søren", "SOREN" and "ｓｏｒｅｎ" all read "soren". */
+export const fold = (text: string) => Array.from(text, foldChar).join("");
+
+// What may join the parts of a name, or be left out: "Mary Ann", "Mary-Ann", "MaryAnn".
+const GAP = "[\\s'\\u2018\\u2019\\p{Pd}]*";
+
+/**
+ * Regex source for a folded name whose parts may be joined by any gap or none. With `gapsAnywhere`
+ * a gap may fall between any two letters too ("mary ann" for Maryann). Null when folding leaves nothing.
+ */
+function nameSource(name: string, gapsAnywhere: boolean): string | null {
+  const parts = fold(name).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  if (parts.length === 0) return null;
+  return (gapsAnywhere ? Array.from(parts.join("")) : parts).map(escapeRegExp).join(GAP);
+}
+
+/** Where the name is in `text`, in any spelling, as [start, end) positions in `text` itself. */
+function nameRanges(text: string, name: string, gapsAnywhere: boolean): [number, number][] {
+  const source = nameSource(name, gapsAnywhere);
+  if (!source) return [];
+  // Fold one character at a time, remembering which character each folded piece came from.
+  const chars = Array.from(text);
+  const starts: number[] = [];
+  const owner: number[] = [];
+  let folded = "";
+  let at = 0;
+  chars.forEach((ch, i) => {
+    starts.push(at);
+    at += ch.length;
+    const f = foldChar(ch);
+    folded += f;
+    for (let k = 0; k < f.length; k++) owner.push(i);
+  });
+  starts.push(at);
+
+  const ranges: [number, number][] = [];
+  for (const m of folded.matchAll(bounded(source, "gu"))) {
+    const first = (m.index ?? 0) + m[0].length - m[1].length;
+    let end = owner[first + m[1].length - 1] + 1;
+    // Accent marks typed after the name (a name in pieces) go with it.
+    while (end < chars.length && foldChar(chars[end]) === "") end++;
+    ranges.push([starts[owner[first]], starts[end]]);
+  }
+  return ranges;
+}
+
+/**
+ * Swap the child's name for `mask` in every spelling: case, accents, letters like ø and ł, wide
+ * letters, and spaces, hyphens or apostrophes between its parts added or left out. Used on text a
+ * model reads (interests, lines for the classifier). maskName stays exact for text a child hears,
+ * so "angel" never turns into a child's name Ángel.
+ */
+export function maskAnySpelling(text: string, name: string, mask = "[name]", { gapsAnywhere = false } = {}): string {
+  const composed = text.normalize("NFC");
+  let out = "";
+  let from = 0;
+  for (const [start, end] of nameRanges(composed, name, gapsAnywhere)) {
+    out += composed.slice(from, start) + mask;
+    from = end;
+  }
+  return out + composed.slice(from);
+}
+
+/**
+ * True when `text` holds the name in any spelling maskAnySpelling would swap. A name that folds to
+ * nothing cannot be looked for, so it counts as there: whatever asks then sends nothing.
+ */
+export function holdsName(text: string, name: string): boolean {
+  const source = nameSource(name, false);
+  if (!source) return name.trim() !== "";
+  return bounded(source, "u").test(fold(text));
 }
 
 /** The instant, offline half of the check. Pure: same line in, same verdict out. */

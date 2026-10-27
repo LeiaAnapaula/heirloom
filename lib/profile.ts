@@ -35,6 +35,13 @@ export type Attempt = {
   note?: string; // e.g. the child's guess on the gravity page, as text
 };
 
+/**
+ * The loves a grown-up can tap when adding a child (components/account/ChildForm.tsx), in the
+ * order they show. Every one has a story: space is what the written story is about, and each
+ * of the others picks a written telling (content/episodes/lost-star-tellings.ts).
+ */
+export const IDEAS = ["space", "dinosaurs", "the ocean", "animals", "trucks", "music", "drawing", "bugs", "castles", "trains"];
+
 /** The longest answer time an account keeps for one attempt (10 minutes). */
 export const MAX_ATTEMPT_MS = 600_000;
 

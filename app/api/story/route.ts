@@ -1,17 +1,24 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaJSONSchemaOutputFormat } from "@anthropic-ai/sdk/helpers/beta/json-schema";
+import { createHmac } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { episodes } from "@/content/episodes/lost-star";
 import { textHash } from "@/lib/hash";
-import { cacheDir, caller, overLimit, readJson, sameOriginJson, sha256 } from "@/lib/server/guard";
-import { checkLines, maskName } from "@/lib/safety";
+import { cacheDir, caller, overLimit, readJson, sameOriginJson } from "@/lib/server/guard";
+import { sessionSecret } from "@/lib/server/session";
+import { GeminiStoryError, planGeminiStory, writeWithGemini } from "@/lib/server/story-gemini";
+import { holdsName, maskName } from "@/lib/safety";
 import {
+  SAFETY_SYSTEM_PROMPT,
+  STORY_SCHEMA,
   STORY_SYSTEM_PROMPT,
+  VERDICT_SCHEMA,
   buildOutline,
   buildStoryMessage,
-  salvageGenerated,
-  validateGenerated,
+  numberLines,
+  readVerdicts,
+  screenStory,
   type GeneratedScreens,
   type ScreenOutline,
   type StoryProfile,
@@ -23,9 +30,13 @@ import {
  * Out: { screens, fallback, model }: generated narration that passed validation and safety,
  *      plus the outline ids that play as written instead.
  *
+ * Who writes: Claude when ANTHROPIC_API_KEY is set, else Gemini only when the server opts in
+ * with GEMINI_STORIES=on and GEMINI_API_KEY is set (lib/server/story-gemini.ts, for made-up
+ * demo profiles only, see storyWriter), else nobody and the written story plays.
+ *
  * Runs on Node, the default runtime (Cache Components does not allow a `runtime` export).
- * The API key is read here and never reaches the browser. The child's name is sent to
- * Claude once, for the story, and is never logged.
+ * The API keys are read here and never reach the browser. The child's name is sent to
+ * Claude once, for the story, and is never logged. Gemini never receives it at all.
  */
 
 export const maxDuration = 120;
@@ -35,8 +46,12 @@ const MODEL = "claude-opus-5-5";
 const FALLBACK_BETA = "server-side-fallback-2026-07-01";
 const CACHE_DIR = cacheDir("story");
 const MAX_BODY_BYTES = 4096;
+const HOUR_MS = 60 * 60 * 1000;
 // Each new story is two Opus calls: at most a few per caller per hour, in this demo.
 const NEW_STORIES_PER_HOUR = 6;
+// And at most this many for everyone together. The per-caller count trusts X-Forwarded-For,
+// which anyone can make up, so this is the cap that actually protects the key's quota.
+const ALL_NEW_STORIES_PER_HOUR = 20;
 
 type StoryResult = { screens: GeneratedScreens["screens"]; fallback: string[]; model: string };
 
@@ -63,7 +78,9 @@ const squish = (s: string) => s.trim().replace(/\s+/g, " ");
 /**
  * Strict: exactly these fields, nothing else. A first name of 1 to 20 letters (spaces,
  * hyphens, apostrophes allowed between letters), age 3 to 8, one to three interests of
- * up to 30 letters and spaces, and an episode that exists.
+ * up to 30 letters and spaces, and an episode that exists. Names and interests are put in
+ * one Unicode form (NFC) before they are checked, the same form generated lines are tidied
+ * into, so masking the name always finds it.
  */
 function parseRequest(body: unknown): { profile: StoryProfile; episodeId: string } | null {
   if (!isRecord(body) || !onlyKeys(body, ["profile", "episodeId"])) return null;
@@ -73,7 +90,7 @@ function parseRequest(body: unknown): { profile: StoryProfile; episodeId: string
 
   const { name, age, interests } = profile;
   if (typeof name !== "string") return null;
-  const cleanName = squish(name);
+  const cleanName = squish(name).normalize("NFC");
   if (cleanName.length > 20 || !NAME.test(cleanName)) return null;
   if (typeof age !== "number" || !Number.isInteger(age) || age < 3 || age > 8) return null;
   if (!Array.isArray(interests) || interests.length < 1 || interests.length > 3) return null;
@@ -81,7 +98,7 @@ function parseRequest(body: unknown): { profile: StoryProfile; episodeId: string
   const cleanInterests: string[] = [];
   for (const interest of interests) {
     if (typeof interest !== "string") return null;
-    const clean = squish(interest);
+    const clean = squish(interest).normalize("NFC");
     if (clean.length > 30 || !INTEREST.test(clean)) return null;
     cleanInterests.push(clean);
   }
@@ -97,18 +114,38 @@ function cacheKey(episodeId: string, outline: ScreenOutline[], p: StoryProfile):
   return `${episodeId}|${version}|${p.name.toLowerCase()}|${p.age}|${interests}`;
 }
 
-// A strong hash for the file name; the name inside the key never reaches the disk.
-const cacheFile = (key: string) => path.join(CACHE_DIR, `${sha256(key)}.json`);
-const keyCheck = (key: string) => sha256(`check|${key}`);
+/**
+ * Where a story is cached, and the check stored inside it. Both are an HMAC of the key with the
+ * server's secret (the one that signs sign-in cookies), never a plain hash: a plain hash of
+ * "episode|version|name|age|interests" lets anyone who can read .cache/story find a child's name
+ * by trying common names. Null when the server has no secret (production without SESSION_SECRET):
+ * then stories are simply not cached on disk.
+ */
+async function diskSlot(key: string): Promise<{ file: string; check: string } | null> {
+  let secret: string;
+  try {
+    secret = await sessionSecret();
+  } catch {
+    return null;
+  }
+  // The "story-cache|" prefix keeps these apart from cookie signatures, which sign base64 text with no "|".
+  const keyed = (text: string) => createHmac("sha256", secret).update(`story-cache|${text}`).digest("hex");
+  return { file: path.join(CACHE_DIR, `${keyed(`file|${key}`)}.json`), check: keyed(`check|${key}`) };
+}
 
 /**
- * Stories are cached with the child's name masked, so no first name is ever written to disk
- * (deleting an account leaves nothing behind) and the name is filled back in on the way out.
+ * Stories are cached with the child's name masked, so no first name is ever written to disk,
+ * and the name is filled back in on the way out. Deleting an account does not remove cached
+ * stories: they hold no name, under file names only this server's secret can link to a child.
+ * The mask is exact (case aside), so "angel" in a story never turns into a child named Ángel.
  */
 const mask = (r: StoryResult, name: string): StoryResult => ({
   ...r,
   screens: r.screens.map((s) => ({ ...s, narration: s.narration.map((t) => maskName(t, name, "{name}")) })),
 });
+/** True when a masked story still holds the name in another spelling: "Zoe" for Zoë, "IŞIL" for Işıl. */
+const stillNamed = (r: StoryResult, name: string) =>
+  r.screens.some((s) => s.narration.some((t) => holdsName(t.replaceAll("{name}", " "), name)));
 const unmask = (r: StoryResult, name: string): StoryResult => ({
   ...r,
   screens: r.screens.map((s) => ({ ...s, narration: s.narration.map((t) => t.replaceAll("{name}", name)) })),
@@ -116,8 +153,10 @@ const unmask = (r: StoryResult, name: string): StoryResult => ({
 
 async function readDisk(key: string): Promise<StoryResult | null> {
   try {
-    const data: unknown = JSON.parse(await readFile(cacheFile(key), "utf8"));
-    if (!isRecord(data) || data.check !== keyCheck(key)) return null;
+    const slot = await diskSlot(key);
+    if (!slot) return null;
+    const data: unknown = JSON.parse(await readFile(slot.file, "utf8"));
+    if (!isRecord(data) || data.check !== slot.check) return null;
     if (!Array.isArray(data.screens) || !Array.isArray(data.fallback) || typeof data.model !== "string") return null;
     return { screens: data.screens as StoryResult["screens"], fallback: data.fallback as string[], model: data.model };
   } catch {
@@ -127,59 +166,16 @@ async function readDisk(key: string): Promise<StoryResult | null> {
 
 async function writeDisk(key: string, result: StoryResult): Promise<void> {
   try {
+    const slot = await diskSlot(key);
+    if (!slot) return;
     await mkdir(CACHE_DIR, { recursive: true });
-    await writeFile(cacheFile(key), JSON.stringify({ check: keyCheck(key), ...result }, null, 2));
+    await writeFile(slot.file, JSON.stringify({ check: slot.check, ...result }, null, 2));
   } catch {
     // A read-only disk only costs us the cache.
   }
 }
 
 // ---------------------------------------------------------------- Claude
-
-const STORY_SCHEMA = {
-  type: "object",
-  properties: {
-    screens: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          id: { type: "string" },
-          narration: { type: "array", items: { type: "string" }, minItems: 1 },
-        },
-        required: ["id", "narration"],
-        additionalProperties: false,
-      },
-    },
-  },
-  required: ["screens"],
-  additionalProperties: false,
-} as const;
-
-const VERDICT_SCHEMA = {
-  type: "object",
-  properties: {
-    verdicts: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: { index: { type: "integer" }, safe: { type: "boolean" } },
-        required: ["index", "safe"],
-        additionalProperties: false,
-      },
-    },
-  },
-  required: ["verdicts"],
-  additionalProperties: false,
-} as const;
-
-const SAFETY_SYSTEM = [
-  "You check lines from a storybook before a 5-year-old hears them.",
-  "For each numbered line, answer one question: is it safe and appropriate for a 5-year-old, yes or no?",
-  "A line is unsafe if it is scary, violent, romantic, about real brands, characters or people, asks for personal information, or is confusing.",
-  "[name] stands for the child's first name.",
-  "Return one verdict for every line: index is the line's number, safe is true for yes and false for no.",
-].join("\n");
 
 /** One Claude call for all lines. Masked names only. Throws on refusal or no answer (checkLines then fails closed). */
 async function classify(client: Anthropic, lines: string[]): Promise<boolean[]> {
@@ -188,19 +184,14 @@ async function classify(client: Anthropic, lines: string[]): Promise<boolean[]> 
     max_tokens: 4000,
     betas: [FALLBACK_BETA],
     fallbacks: "default",
-    system: SAFETY_SYSTEM,
+    system: SAFETY_SYSTEM_PROMPT,
     output_config: { format: betaJSONSchemaOutputFormat(VERDICT_SCHEMA), effort: "low" },
-    messages: [{ role: "user", content: lines.map((line, i) => `${i + 1}. ${line}`).join("\n") }],
+    messages: [{ role: "user", content: numberLines(lines) }],
   });
   if (message.stop_reason === "refusal" || !message.parsed_output) throw new StoryFailure("classifier gave no verdicts");
-
-  // A line answered twice counts as safe only if every answer said so; a line never answered is unsafe.
-  const answers = new Map<number, boolean>();
-  for (const v of message.parsed_output.verdicts) {
-    const i = v.index - 1;
-    answers.set(i, (answers.get(i) ?? true) && v.safe === true);
-  }
-  return lines.map((_, i) => answers.get(i) === true);
+  // A line answered twice counts as safe only if every answer said so. Numbering that is not
+  // exactly 1 to the line count (from 0, a line skipped) throws, so every line is unsafe.
+  return readVerdicts(message.parsed_output, lines.length);
 }
 
 async function generate(client: Anthropic, profile: StoryProfile, outline: ScreenOutline[]): Promise<StoryResult> {
@@ -217,29 +208,55 @@ async function generate(client: Anthropic, profile: StoryProfile, outline: Scree
   if (message.stop_reason === "refusal") throw new StoryFailure("refusal");
   if (!message.parsed_output) throw new StoryFailure("no structured output");
 
-  // Strict check first. If it fails, keep the screens that pass on their own.
-  const strict = validateGenerated(message.parsed_output, outline, profile);
-  const checked = strict.ok
-    ? { value: strict.value, dropped: [] as string[] }
-    : salvageGenerated(message.parsed_output, outline, profile);
-  if (!checked) throw new StoryFailure("output failed validation");
-
-  // Safety: blocklist, then one classifier call. Any unsafe line sends its whole screen back to the written version.
-  const screens = checked.value.screens;
-  const lines = screens.flatMap((s) => s.narration.map((t) => maskName(t, profile.name)));
-  const verdicts = await checkLines(lines, (pending) => classify(client, pending));
-  let k = 0;
-  const safe = screens.filter((s) => {
-    const ok = verdicts.slice(k, k + s.narration.length).every((v) => v.safe);
-    k += s.narration.length;
-    return ok;
-  });
-
-  // Re-run the per-screen check so `fallback` lists every id not generated, in outline order.
-  const final = salvageGenerated({ screens: safe }, outline, profile);
-  if (!final) throw new StoryFailure("nothing passed the safety check");
-  return { screens: final.value.screens, fallback: final.dropped, model: message.model };
+  // Validation (strict, else the screens that pass on their own), then the blocklist and one
+  // classifier call. Any unsafe line sends its whole screen back to the written version.
+  const screened = await screenStory(message.parsed_output, outline, profile, (pending) => classify(client, pending));
+  if (!screened.ok) throw new StoryFailure(screened.why);
+  return { screens: screened.screens, fallback: screened.fallback, model: message.model };
 }
+
+// ---------------------------------------------------------------- who writes
+
+type Writer = {
+  write: (profile: StoryProfile, outline: ScreenOutline[]) => Promise<StoryResult>;
+  /** False when the writer would turn this story down itself, before any model call. */
+  willAsk: (profile: StoryProfile, outline: ScreenOutline[]) => boolean;
+};
+
+/**
+ * Claude when its key is set. Else Gemini, but only when the server says GEMINI_STORIES=on
+ * (exactly "on") and its key is set: Google's Gemini API terms do not allow it in apps meant
+ * for children, the free tier may use what it gets to improve Google's models, and the parent
+ * consent names only Anthropic. So Gemini stories are off unless someone turns them on for
+ * made-up demo profiles, and GEMINI_API_KEY alone (the World Builder scripts use it) never
+ * does. Else null: the written story plays.
+ */
+function storyWriter(): Writer | null {
+  const claudeKey = process.env.ANTHROPIC_API_KEY;
+  if (claudeKey) {
+    return {
+      write: (profile, outline) => generate(new Anthropic({ apiKey: claudeKey, maxRetries: 1, timeout: 90_000 }), profile, outline),
+      willAsk: () => true,
+    };
+  }
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (process.env.GEMINI_STORIES === "on" && geminiKey) {
+    return {
+      write: (profile, outline) => writeWithGemini(geminiKey, profile, outline),
+      // Gemini sends nothing when the child's name could not stay private (Will, Tavi...).
+      willAsk: (profile, outline) => planGeminiStory(profile, outline).ok,
+    };
+  }
+  return null;
+}
+
+/**
+ * True when a new story may not start now: this caller has had its few, or everyone together
+ * has had theirs. Only asked for a story that would start a model call, never a cached one, one
+ * already being written, or one the writer turns down before asking, so none of those counts.
+ */
+const tooManyNewStories = (request: Request) =>
+  overLimit(`story|${caller(request)}`, NEW_STORIES_PER_HOUR, HOUR_MS) || overLimit("story|all", ALL_NEW_STORIES_PER_HOUR, HOUR_MS);
 
 // ---------------------------------------------------------------- handler
 
@@ -259,21 +276,22 @@ export async function POST(request: Request): Promise<Response> {
     return json(unmask(hit, req.profile.name), 200);
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const writer = storyWriter();
   // No key is a normal setup (the written story plays), not a failure, so it is a quiet 200.
-  if (!apiKey) return json({ story: "written", reason: "no-story-key" }, 200);
-  if (!inflight.has(key) && overLimit(`story|${caller(request)}`, NEW_STORIES_PER_HOUR, 60 * 60 * 1000)) {
-    return json({ error: "story-busy" }, 429);
-  }
+  if (!writer) return json({ story: "written", reason: "no-story-key" }, 200);
+  // A story the writer turns down before any model call costs nothing, so it is quiet and not counted.
+  if (!writer.willAsk(req.profile, outline)) return json({ story: "written", reason: "kept-private" }, 200);
+  if (!inflight.has(key) && tooManyNewStories(request)) return json({ error: "story-busy" }, 429);
 
   let pending = inflight.get(key);
   if (!pending) {
-    const client = new Anthropic({ apiKey, maxRetries: 1, timeout: 90_000 });
-    pending = generate(client, req.profile, outline)
+    pending = writer
+      .write(req.profile, outline)
       .then(async (result) => {
         const masked = mask(result, req.profile.name);
         memory.set(key, masked);
-        await writeDisk(key, masked);
+        // The last check before the disk: a line that still holds the name keeps the story in memory only.
+        if (!stillNamed(masked, req.profile.name)) await writeDisk(key, masked);
         return masked;
       })
       .finally(() => inflight.delete(key));
@@ -295,6 +313,10 @@ export async function POST(request: Request): Promise<Response> {
     if (err instanceof Anthropic.AnthropicError) {
       console.error("[story] could not read Claude's reply");
       return json({ error: "story-invalid" }, 502);
+    }
+    if (err instanceof GeminiStoryError) {
+      console.error(`[story] Gemini ${err.message}`);
+      return json({ error: err.kind === "unavailable" ? "story-unavailable" : "story-invalid" }, 502);
     }
     console.error("[story] unexpected failure");
     return json({ error: "story-failed" }, 500);

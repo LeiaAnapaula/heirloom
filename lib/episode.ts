@@ -73,11 +73,26 @@ export type Screen = {
   onHelp: { narration: Line[] };
 };
 
+/**
+ * A written retelling of an episode for one theme a child loves ("dinosaurs", "the ocean"),
+ * picked instantly from the child's interests, with no story brain and no wait.
+ * `screens` holds narration by outline id (lib/story.ts buildOutline: "wake", "go",
+ * "go:success", ...), with {name} where the child's name goes. Everything else (hints,
+ * give-up lines, counting) stays as written.
+ */
+export type Telling = {
+  id: string; // a slug: "dinosaurs", "ocean"
+  interests: string[]; // lowercase words and phrases that pick this telling, the interest chip first, then close synonyms
+  screens: Record<string, string[]>; // narration by outline id
+};
+
 export type Episode = {
   id: string;
   title: string;
   screens: Screen[];
   next: { title: string }; // tomorrow's episode
+  about?: string[]; // what the written story itself is about: a child who loves these hears it as written
+  tellings?: Telling[]; // written retellings for other loves
 };
 
 export function withName(text: string, name: string): string {

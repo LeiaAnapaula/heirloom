@@ -16,9 +16,10 @@ let secret: string | null = null;
 /**
  * The key that signs session cookies. In production it must come from SESSION_SECRET.
  * On a laptop we make one the first time and keep it in .data/ (gitignored), so
- * nobody has to set anything up to try accounts.
+ * nobody has to set anything up to try accounts. The story cache keys its file names
+ * with it too (app/api/story), so there is only one secret to keep.
  */
-async function sessionSecret(): Promise<string> {
+export async function sessionSecret(): Promise<string> {
   if (secret) return secret;
   if (process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 32) return (secret = process.env.SESSION_SECRET);
   if (process.env.NODE_ENV === "production") throw new Error("SESSION_SECRET (32+ characters) is required in production");
