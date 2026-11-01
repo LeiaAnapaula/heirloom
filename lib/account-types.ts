@@ -19,7 +19,7 @@ export const CONSENT_VERSION = "2026-10-25.2";
 
 /** Shown at sign-up, word for word, and stored with the date the parent agreed. */
 export const CONSENT_TEXT =
-  "I am this child's parent or guardian. I agree that The Primer may keep my child's first name, age, interests, and reading progress, only to teach my child. To write and read stories, only the first name, age, and interests are shared with our AI partners (Anthropic for the story, ElevenLabs for the narrator's voice). Spoken answers are turned into text by the browser's speech service; no voice recordings are kept. I can delete everything at any time.";
+  "I am this child's parent or guardian. I agree that Celestine may keep my child's first name, age, interests, and reading progress, only to teach my child. To write and read stories, only the first name, age, and interests are shared with our AI partners (Anthropic for the story, ElevenLabs for the narrator's voice). Spoken answers are turned into text by the browser's speech service; no voice recordings are kept. I can delete everything at any time.";
 
 const NAME = /^[\p{L}][\p{L}' -]{0,19}$/u;
 const INTEREST = /^[\p{L} ]{2,30}$/u;
@@ -35,7 +35,7 @@ export function cleanChildInput(input: unknown): { name: string; age: number; in
   const n = typeof name === "string" ? name.trim().replace(/\s+/g, " ").normalize("NFC") : "";
   if (!NAME.test(n)) return { error: "Use your child's first name only (letters, up to 20)." };
   const a = typeof age === "number" ? age : Number(age);
-  if (!Number.isInteger(a) || a < 3 || a > 8) return { error: "The Primer is made for children ages 3 to 8." };
+  if (!Number.isInteger(a) || a < 3 || a > 8) return { error: "Celestine is made for children ages 3 to 8." };
   const list = Array.isArray(interests) ? interests : [];
   const tidyInterest = (i: unknown) => (typeof i === "string" ? i.trim().toLowerCase().replace(/\s+/g, " ").normalize("NFC") : "");
   const ints = [...new Set(list.map(tidyInterest))].filter(Boolean);

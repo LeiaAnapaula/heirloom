@@ -1,4 +1,4 @@
-# The Primer: Build Spec for Claude Code
+# Celestine: Build Spec for Claude Code
 
 Put this file at the root of a new, empty folder named `primer`. Claude Code reads `CLAUDE.md` automatically at the start of every session, so this is the single source of truth for the build.
 

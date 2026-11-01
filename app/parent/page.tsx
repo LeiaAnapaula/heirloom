@@ -3,7 +3,7 @@ import ParentSummary from "@/components/ParentSummary";
 import Starfield from "@/components/Starfield";
 
 export const metadata: Metadata = {
-  title: "For grown-ups | The Primer",
+  title: "For grown-ups | Celestine",
 };
 
 // No request data here, ever. The parent check and the results render in the browser,

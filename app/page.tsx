@@ -12,7 +12,7 @@ export default function TitleScreen() {
       <h1
         className="bg-gradient-to-b from-[#fff4d6] via-gold to-gold-deep bg-clip-text text-6xl font-semibold tracking-tight text-transparent drop-shadow-[0_0_28px_rgba(245,201,105,0.35)] sm:text-8xl"
       >
-        The Primer
+        Celestine
       </h1>
       <ReaderTitle title={lostStar.title} />
 

@@ -11,11 +11,11 @@ const quicksand = Quicksand({
 });
 
 export const metadata: Metadata = {
-  title: "The Primer",
+  title: "Celestine",
   description: "A storybook that wakes up, reads with your child, and listens back.",
   appleWebApp: {
     capable: true,
-    title: "The Primer",
+    title: "Celestine",
     statusBarStyle: "black-translucent",
   },
 };

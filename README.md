@@ -24,7 +24,7 @@ into a shared place, and the only reward is the person on the other side answeri
 
 ## What exists today
 
-Heirloom grows out of **The Primer**, a working AI storybook for children 4 to 6 (the full build spec is `CLAUDE.md`).
+Heirloom grows out of **Celestine**, a working AI storybook for children 4 to 6 (the full build spec is `CLAUDE.md`).
 It is built, tested (446 unit tests, end-to-end runs in headless Chrome) and committed milestone by milestone:
 
 - **A living book**: it glows, opens, turns its pages and reads aloud in one narrator voice, with captions that light

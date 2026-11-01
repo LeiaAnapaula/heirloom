@@ -202,7 +202,7 @@ function Cover({ glowing }: { glowing: boolean }) {
           strokeLinejoin="round"
         />
       </motion.svg>
-      <p className="mt-[6%] text-[clamp(1.1rem,2.6vw,2.4rem)] font-semibold tracking-wide text-gold">The Primer</p>
+      <p className="mt-[6%] text-[clamp(1.1rem,2.6vw,2.4rem)] font-semibold tracking-wide text-gold">Celestine</p>
     </div>
   );
 }
